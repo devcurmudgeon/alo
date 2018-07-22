@@ -1,0 +1,6 @@
+@prefix lv2:  <http://lv2plug.in/ns/lv2core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<http://devcurmudgeon.com/alo> a lv2:Plugin .
+<http://devcurmudgeon.com/alo> lv2:binary <alo.so> .
+<http://devcurmudgeon.com/alo> rdfs:seeAlso <alo.ttl>, <modgui.ttl> .
