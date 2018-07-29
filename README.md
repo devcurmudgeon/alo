@@ -10,3 +10,9 @@ rm -fr /home/builder/mod-workdir/plugins-dep/build/alo* && ./build alo
 
 # deploy
 cd /home/builder/mod-workdir/plugins && tar cz alo.lv2 | base64 | curl -F 'package=@-' http://192.168.51.1/sdk/install
+
+#debug
+cat /root/alo.log
+
+mod-host -p 1234 -i
+add http://devcurmudgeon.com/alo 0

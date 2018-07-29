@@ -8,7 +8,7 @@
         modgui:stylesheet <modgui/stylesheet-alo.css> ;
         modgui:screenshot <modgui/screenshot-alo.png> ;
         modgui:thumbnail <modgui/thumbnail-alo.png> ;
-        modgui:brand "DevCurmudgeon" ;
+        modgui:brand "devcurmudgeon" ;
         modgui:label "Alo" ;
         modgui:model "boxy" ;
         modgui:panel "1-knob" ;

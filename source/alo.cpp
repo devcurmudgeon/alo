@@ -27,12 +27,31 @@
 #include <string.h>
 
 #include <functional>
+
+#include "lv2/lv2plug.in/ns/ext/atom/atom.h"
+#include "lv2/lv2plug.in/ns/ext/atom/util.h"
+#include "lv2/lv2plug.in/ns/ext/time/time.h"
+#include "lv2/lv2plug.in/ns/ext/urid/urid.h"
 #include "lv2/lv2plug.in/ns/lv2core/lv2.h"
 
 static const char* ALO_URI = "http://devcurmudgeon.com/alo";
 static const size_t STORAGE_SECONDS = 360;
 static const size_t NR_OF_BLEND_SAMPLES = 64;
 static const bool LOGGING_ENABLED = true;
+
+typedef struct {
+	LV2_URID atom_Blank;
+	LV2_URID atom_Float;
+	LV2_URID atom_Object;
+	LV2_URID atom_Path;
+	LV2_URID atom_Resource;
+	LV2_URID atom_Sequence;
+	LV2_URID time_Position;
+	LV2_URID time_barBeat;
+	LV2_URID time_beatsPerMinute;
+	LV2_URID time_speed;
+} AloURIs;
+
 
 typedef enum
 {
@@ -45,7 +64,8 @@ enum PortIndex
 {
     ALO_INPUT = 0,
     ALO_OUTPUT = 1,
-    ALO_BUTTON = 2
+    ALO_BUTTON = 2,
+    ALO_CONTROL = 3
 };
 
 ///
@@ -151,12 +171,13 @@ public:
     /// \param data A pointer to the data where the parameter will be written to.
     void connectPort(PortIndex port, void* data)
     {
-        log("ConnectPort");
-        // Install the trivial ports
+        log("ConnectPort %d", port);
+        // Install the ports
         switch (port)
         {
             case ALO_INPUT: m_input = (const float*)data; return;
             case ALO_OUTPUT: m_output = (float*)data; return;
+            case ALO_CONTROL: m_control = (LV2_Atom_Sequence*)data; return;
             default: break;
         }
 
@@ -189,21 +210,18 @@ public:
     /// \param The number of samples to be read from the input and writte to the output.
     void run(uint32_t nrOfSamples)
     {
-        log("Run");
         updateParameters();
-        log("After updateParameters");
 
         m_now += double(nrOfSamples) / m_sampleRate;
         if (m_state == ALO_STATE_IDLE)
         {
             for (uint32_t s = 0; s < nrOfSamples; ++s)
             {
-                m_output[s] = m_dryAmount * m_input[s];
+                m_output[s] = m_input[s];
             }
             return;
         }
 
-        log("After if Idle");
         for (uint32_t s = 0; s < nrOfSamples; ++s)
         {
             // Use the live input
@@ -276,6 +294,10 @@ private:
 
     const float* m_input = NULL;
     float* m_output = NULL;
+	LV2_Atom_Sequence* m_control = NULL;
+
+	LV2_URID_Map* map;   // URID map feature
+	AloURIs     uris;  // Cache of mapped URIDs
 
     //
     // Internal state
