@@ -20,7 +20,7 @@ all: build
 
 build: alo.lv2/alo$(LIB_EXT) alo.lv2/manifest.ttl
 
-alo.lv2/alo$(LIB_EXT): alo.cpp
+alo.lv2/alo$(LIB_EXT): alo.c
 	$(CXX) $^ $(BUILD_CXX_FLAGS) $(LINK_FLAGS) -lm $(SHARED) -o $@
 
 alo.lv2/manifest.ttl: alo.lv2/manifest.ttl.in
