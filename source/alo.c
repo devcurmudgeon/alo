@@ -51,6 +51,12 @@ typedef enum {
 	ALO_CONTROL = 3
 } PortIndex;
 
+typedef enum {
+	STATE_ATTACK,  // Envelope rising
+	STATE_DECAY,   // Envelope lowering
+	STATE_OFF      // Silent
+} State;
+
 void log(const char *message, ...)
 {
 	FILE* f;
@@ -98,14 +104,22 @@ typedef struct {
 		LV2_Atom_Sequence* control;
 	} ports;
 
-
 	// Variables to keep track of the tempo information sent by the host
 	double rate;   // Sample rate
 	float  bpm;    // Beats per minute (tempo)
 	float  speed;  // Transport speed (usually 0=stop, 1=play)
+	State state;
 
 	uint32_t elapsed_len;  // Frames since the start of the last click
 	uint32_t wave_offset;  // Current play offset in the wave
+
+	// One cycle of a sine wave
+	float*   wave;
+	uint32_t wave_len;
+
+	// Envelope parameters
+	uint32_t attack_len;
+	uint32_t decay_len;
 } Alo;
 
 /**
@@ -207,11 +221,49 @@ activate(LV2_Handle instance)
 	log("Activate");
 }
 
+/**
+   Update the current position based on a host message.  This is called by
+   run() when a time:Position is received.
+*/
 static void
 update_position(Alo* self, const LV2_Atom_Object* obj)
 {
-	timestamp();
-	log("Update position");
+	AloURIs* const uris = &self->uris;
+
+	// Received new transport position/speed
+	LV2_Atom *beat = NULL, *bpm = NULL, *speed = NULL;
+	lv2_atom_object_get(obj,
+	                    uris->time_barBeat, &beat,
+	                    uris->time_beatsPerMinute, &bpm,
+	                    uris->time_speed, &speed,
+	                    NULL);
+	if (bpm && bpm->type == uris->atom_Float) {
+		// Tempo changed, update BPM
+		self->bpm = ((LV2_Atom_Float*)bpm)->body;
+		log("BPM: %G", self->bpm);
+	}
+	if (speed && speed->type == uris->atom_Float) {
+		// Speed changed, e.g. 0 (stop) to 1 (play)
+		self->speed = ((LV2_Atom_Float*)speed)->body;
+		log("Speed: %G", self->speed);
+	}
+	if (beat && beat->type == uris->atom_Float) {
+		// Received a beat position, synchronise
+		// This hard sync may cause clicks, a real plugin would be more graceful
+		const float frames_per_beat = 60.0f / self->bpm * self->rate;
+		const float bar_beats       = ((LV2_Atom_Float*)beat)->body;
+		const float beat_beats      = bar_beats - floorf(bar_beats);
+        log("Bar beats: %G", bar_beats);
+        log("Beatbeats: %G", beat_beats);
+		self->elapsed_len           = beat_beats * frames_per_beat;
+		if (self->elapsed_len < self->attack_len) {
+			self->state = STATE_ATTACK;
+		} else if (self->elapsed_len < self->attack_len + self->decay_len) {
+			self->state = STATE_DECAY;
+		} else {
+			self->state = STATE_OFF;
+		}
+	}
 }
 /**
    The `run()` method is the main process function of the plugin.  It processes
@@ -222,7 +274,6 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 static void
 run(LV2_Handle instance, uint32_t n_samples)
 {
-	log("Run %d", n_samples);
 	Alo* self = (Alo*)instance;
 
 	const float* const input  = self->ports.input;
@@ -260,7 +311,6 @@ run(LV2_Handle instance, uint32_t n_samples)
 		// Update time for next iteration and move to next event
 		last_t = ev->time.frames;
 	}
-
 	// Play for remainder of cycle
 //	play(self, last_t, sample_count);
 }
