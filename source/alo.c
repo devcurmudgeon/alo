@@ -19,46 +19,55 @@
 #include <math.h>
 #include <stdlib.h>
 
-/**
-   LV2 headers are based on the URI of the specification they come from, so a
-   consistent convention can be used even for unofficial extensions.  The URI
-   of the core LV2 specification is <http://lv2plug.in/ns/lv2core>, by
-   replacing `http:/` with `lv2` any header in the specification bundle can be
-   included, in this case `lv2.h`.
-*/
+#include "lv2/lv2plug.in/ns/ext/atom/atom.h"
+#include "lv2/lv2plug.in/ns/ext/atom/util.h"
+#include "lv2/lv2plug.in/ns/ext/time/time.h"
+#include "lv2/lv2plug.in/ns/ext/urid/urid.h"
 #include "lv2/lv2plug.in/ns/lv2core/lv2.h"
 
-/**
-   The URI is the identifier for a plugin, and how the host associates this
-   implementation in code with its description in data.  In this plugin it is
-   only used once in the code, but defining the plugin URI at the top of the
-   file is a good convention to follow.  If this URI does not match that used
-   in the data files, the host will fail to load the plugin.
-*/
-#define AMP_URI "http://lv2plug.in/plugins/eg-amp"
+#define ALO_URI "http://devcurmudgeon.com/alo"
 
-/**
-   In code, ports are referred to by index.  An enumeration of port indices
-   should be defined for readability.
-*/
+typedef struct {
+	LV2_URID atom_Blank;
+	LV2_URID atom_Float;
+	LV2_URID atom_Object;
+	LV2_URID atom_Path;
+	LV2_URID atom_Resource;
+	LV2_URID atom_Sequence;
+	LV2_URID time_Position;
+	LV2_URID time_barBeat;
+	LV2_URID time_beatsPerMinute;
+	LV2_URID time_speed;
+} AloURIs;
+
 typedef enum {
-	AMP_GAIN   = 0,
-	AMP_INPUT  = 1,
-	AMP_OUTPUT = 2
+	ALO_INPUT = 0,
+	ALO_OUTPUT = 1,
+	ALO_BUTTON = 2,
+	ALO_CONTROL = 3
 } PortIndex;
 
 /**
    Every plugin defines a private structure for the plugin instance.  All data
    associated with a plugin instance is stored here, and is available to
-   every instance method.  In this simple plugin, only port buffers need to be
-   stored, since there is no additional instance data.
+   every instance method.
 */
 typedef struct {
 	// Port buffers
-	const float* gain;
 	const float* input;
 	float*       output;
-} Amp;
+	float*       button;
+	LV2_Atom_Sequence* control;
+
+	// Variables to keep track of the tempo information sent by the host
+	double rate;   // Sample rate
+	float  bpm;    // Beats per minute (tempo)
+	float  speed;  // Transport speed (usually 0=stop, 1=play)
+
+	uint32_t elapsed_len;  // Frames since the start of the last click
+	uint32_t wave_offset;  // Current play offset in the wave
+
+} Alo;
 
 /**
    The `instantiate()` function is called by the host to create a new plugin
@@ -76,9 +85,9 @@ instantiate(const LV2_Descriptor*     descriptor,
             const char*               bundle_path,
             const LV2_Feature* const* features)
 {
-	Amp* amp = (Amp*)malloc(sizeof(Amp));
+	Alo* alo = (Alo*)malloc(sizeof(Alo));
 
-	return (LV2_Handle)amp;
+	return (LV2_Handle)alo;
 }
 
 /**
@@ -94,18 +103,20 @@ connect_port(LV2_Handle instance,
              uint32_t   port,
              void*      data)
 {
-	Amp* amp = (Amp*)instance;
+	Alo* alo = (Alo*)instance;
 
 	switch ((PortIndex)port) {
-	case AMP_GAIN:
-		amp->gain = (const float*)data;
+	case ALO_INPUT:
+		alo->input = (const float*)data;
 		break;
-	case AMP_INPUT:
-		amp->input = (const float*)data;
+	case ALO_OUTPUT:
+		alo->output = (float*)data;
 		break;
-	case AMP_OUTPUT:
-		amp->output = (float*)data;
+	case ALO_BUTTON:
+		alo->button = (float*)data;
 		break;
+	case ALO_CONTROL:
+		alo->control = (LV2_Atom_Sequence*)data;
 	}
 }
 
@@ -123,9 +134,6 @@ activate(LV2_Handle instance)
 {
 }
 
-/** Define a macro for converting a gain in dB to a coefficient. */
-#define DB_CO(g) ((g) > -90.0f ? powf(10.0f, (g) * 0.05f) : 0.0f)
-
 /**
    The `run()` method is the main process function of the plugin.  It processes
    a block of audio in the audio context.  Since this plugin is
@@ -135,16 +143,13 @@ activate(LV2_Handle instance)
 static void
 run(LV2_Handle instance, uint32_t n_samples)
 {
-	const Amp* amp = (const Amp*)instance;
+	const Alo* alo = (const Alo*)instance;
 
-	const float        gain   = *(amp->gain);
-	const float* const input  = amp->input;
-	float* const       output = amp->output;
-
-	const float coef = DB_CO(gain);
+	const float* const input  = alo->input;
+	float* const       output = alo->output;
 
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
-		output[pos] = input[pos] * coef;
+		output[pos] = input[pos];
 	}
 }
 
@@ -198,7 +203,7 @@ extension_data(const char* uri)
    library constructors and destructors to clean up properly.
 */
 static const LV2_Descriptor descriptor = {
-	AMP_URI,
+	ALO_URI,
 	instantiate,
 	connect_port,
 	activate,
