@@ -25,6 +25,8 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#include <time.h>
+#include <sys/time.h>
 
 #include <functional>
 
@@ -144,8 +146,8 @@ class Looper
 {
 public:
     /// Constructor
-    /// \param sampleRate The sample rate is used for calculation of the storage needed
-    ///                   and also the current time.
+    /// \param sampleRate The sample rate is used for calculation of the
+	/// storage needed and also the current time.
     Looper(double sampleRate)
         : m_sampleRate(sampleRate)
     {
@@ -155,6 +157,7 @@ public:
 
         if (LOGGING_ENABLED)
             m_logFile = fopen("/root/alo.log", "wb");
+
 		log("Hello");
     }
 
@@ -187,16 +190,16 @@ public:
             m_Button.connect(data, [this](bool pressed, double interval, bool doubleClick)
             {
                 if (!pressed)
-                    log("ConnectPort pressed");
+                    log("button pressed");
                     return;
                 if (doubleClick)
                 {
-                    log("ConnectPort doubleClick");
+                    log("button doubleClick");
                     reset();
                     return;
                 }
 
-                log("ConnectPort check recording");
+                log("button check recording");
                 if (m_state == ALO_STATE_RECORDING)
                     finishRecording();
                 else
@@ -205,12 +208,26 @@ public:
         }
     }
 
+    void timestamp()
+	{
+	    time_t rawtime;
+	    struct tm * timeinfo;
+
+	    time ( &rawtime );
+	    timeinfo = localtime ( &rawtime );
+
+	    struct timeval te;
+	    gettimeofday(&te, NULL); // get current time
+	    long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
+	    log( "Timestamp: %s, %lld", asctime(timeinfo), milliseconds);
+	}
     /// Run the looper. Called for a bunch of samples at a time. Parameters will not change within this
     /// call!
     /// \param The number of samples to be read from the input and writte to the output.
     void run(uint32_t nrOfSamples)
     {
         updateParameters();
+		timestamp();
 
         m_now += double(nrOfSamples) / m_sampleRate;
         if (m_state == ALO_STATE_IDLE)
@@ -228,9 +245,8 @@ public:
             float in = m_input[s];
             Loop& loop = m_loops[m_nrOfLoops];
             loop.m_startIndex = m_currentLoopIndex;
-            m_state = ALO_STATE_RECORDING;
 
-            // If we are recoding do the record.
+            // If we are recording do the record.
             if (m_state == ALO_STATE_RECORDING)
             {
                 m_storage[m_nrOfUsedSamples] = in;
