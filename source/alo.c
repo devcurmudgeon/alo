@@ -51,48 +51,6 @@ typedef enum {
 	ALO_CONTROL = 3
 } PortIndex;
 
-/**
-   Every plugin defines a private structure for the plugin instance.  All data
-   associated with a plugin instance is stored here, and is available to
-   every instance method.
-*/
-typedef struct {
-	// Port buffers
-	const float* input;
-	float*       output;
-	float*       button;
-	LV2_Atom_Sequence* control;
-
-	// Variables to keep track of the tempo information sent by the host
-	double rate;   // Sample rate
-	float  bpm;    // Beats per minute (tempo)
-	float  speed;  // Transport speed (usually 0=stop, 1=play)
-
-	uint32_t elapsed_len;  // Frames since the start of the last click
-	uint32_t wave_offset;  // Current play offset in the wave
-} Alo;
-
-/**
-   The `instantiate()` function is called by the host to create a new plugin
-   instance.  The host passes the plugin descriptor, sample rate, and bundle
-   path for plugins that need to load additional resources (e.g. waveforms).
-   The features parameter contains host-provided features defined in LV2
-   extensions, but this simple plugin does not use any.
-
-   This function is in the ``instantiation'' threading class, so no other
-   methods on this instance will be called concurrently with it.
-*/
-static LV2_Handle
-instantiate(const LV2_Descriptor*     descriptor,
-            double                    rate,
-            const char*               bundle_path,
-            const LV2_Feature* const* features)
-{
-	Alo* alo = (Alo*)malloc(sizeof(Alo));
-
-	return (LV2_Handle)alo;
-}
-
 void log(const char *message, ...)
 {
 	FILE* f;
@@ -123,6 +81,83 @@ void timestamp()
 }
 
 /**
+   Every plugin defines a private structure for the plugin instance.  All data
+   associated with a plugin instance is stored here, and is available to
+   every instance method.
+*/
+typedef struct {
+
+	LV2_URID_Map* map;   // URID map feature
+	AloURIs     uris;  // Cache of mapped URIDs
+
+	// Port buffers
+	struct {
+		const float* input;
+		float*       output;
+		float*       button;
+		LV2_Atom_Sequence* control;
+	} ports;
+
+
+	// Variables to keep track of the tempo information sent by the host
+	double rate;   // Sample rate
+	float  bpm;    // Beats per minute (tempo)
+	float  speed;  // Transport speed (usually 0=stop, 1=play)
+
+	uint32_t elapsed_len;  // Frames since the start of the last click
+	uint32_t wave_offset;  // Current play offset in the wave
+} Alo;
+
+/**
+   The `instantiate()` function is called by the host to create a new plugin
+   instance.  The host passes the plugin descriptor, sample rate, and bundle
+   path for plugins that need to load additional resources (e.g. waveforms).
+   The features parameter contains host-provided features defined in LV2
+   extensions, but this simple plugin does not use any.
+
+   This function is in the ``instantiation'' threading class, so no other
+   methods on this instance will be called concurrently with it.
+*/
+static LV2_Handle
+instantiate(const LV2_Descriptor*     descriptor,
+            double                    rate,
+            const char*               bundle_path,
+            const LV2_Feature* const* features)
+{
+	log("Instantiate");
+	Alo* self = (Alo*)calloc(1, sizeof(Alo));
+
+	LV2_URID_Map* map = NULL;
+	for (int i = 0; features[i]; ++i) {
+		if (!strcmp(features[i]->URI, LV2_URID_URI "#map")) {
+			map = (LV2_URID_Map*)features[i]->data;
+		}
+	}
+	if (!map) {
+		fprintf(stderr, "Host does not support urid:map.\n");
+		free(self);
+		return NULL;
+	}
+
+	// Map URIS
+	AloURIs* const uris = &self->uris;
+	self->map = map;
+	uris->atom_Blank          = map->map(map->handle, LV2_ATOM__Blank);
+	uris->atom_Float          = map->map(map->handle, LV2_ATOM__Float);
+	uris->atom_Object         = map->map(map->handle, LV2_ATOM__Object);
+	uris->atom_Path           = map->map(map->handle, LV2_ATOM__Path);
+	uris->atom_Resource       = map->map(map->handle, LV2_ATOM__Resource);
+	uris->atom_Sequence       = map->map(map->handle, LV2_ATOM__Sequence);
+	uris->time_Position       = map->map(map->handle, LV2_TIME__Position);
+	uris->time_barBeat        = map->map(map->handle, LV2_TIME__barBeat);
+	uris->time_beatsPerMinute = map->map(map->handle, LV2_TIME__beatsPerMinute);
+	uris->time_speed          = map->map(map->handle, LV2_TIME__speed);
+
+	log("End of instantiate");
+	return (LV2_Handle)self;
+}
+
+/**
    The `connect_port()` method is called by the host to connect a particular
    port to a buffer.  The plugin must store the data location, but data may not
    be accessed except in run().
@@ -135,24 +170,24 @@ connect_port(LV2_Handle instance,
              uint32_t   port,
              void*      data)
 {
-	Alo* alo = (Alo*)instance;
+	Alo* self = (Alo*)instance;
 
 	switch ((PortIndex)port) {
 	case ALO_INPUT:
-		alo->input = (const float*)data;
+		self->ports.input = (const float*)data;
 		timestamp();
 		log("Connect ALO_INPUT %d", port);
 		break;
 	case ALO_OUTPUT:
-		alo->output = (float*)data;
+		self->ports.output = (float*)data;
 		log("Connect ALO_OUTPUT %d", port);
 		break;
 	case ALO_BUTTON:
-		alo->button = (float*)data;
+		self->ports.button = (float*)data;
 		log("Connect ALO_BUTTON %d", port);
 		break;
 	case ALO_CONTROL:
-		alo->control = (LV2_Atom_Sequence*)data;
+		self->ports.control = (LV2_Atom_Sequence*)data;
 		log("Connect ALO_CONTROL %d", port);
 	}
 }
@@ -169,8 +204,15 @@ connect_port(LV2_Handle instance,
 static void
 activate(LV2_Handle instance)
 {
+	log("Activate");
 }
 
+static void
+update_position(Alo* self, const LV2_Atom_Object* obj)
+{
+	timestamp();
+	log("Update position");
+}
 /**
    The `run()` method is the main process function of the plugin.  It processes
    a block of audio in the audio context.  Since this plugin is
@@ -180,15 +222,50 @@ activate(LV2_Handle instance)
 static void
 run(LV2_Handle instance, uint32_t n_samples)
 {
-	const Alo* alo = (const Alo*)instance;
+	log("Run %d", n_samples);
+	Alo* self = (Alo*)instance;
 
-	const float* const input  = alo->input;
-	float* const       output = alo->output;
+	const float* const input  = self->ports.input;
+	float* const       output = self->ports.output;
 
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
 		output[pos] = input[pos];
 	}
+
+	const AloURIs* uris = &self->uris;
+
+	// from metro.c
+	// Work forwards in time frame by frame, handling events as we go
+	const LV2_Atom_Sequence* in = self->ports.control;
+	uint32_t last_t = 0;
+
+	for (const LV2_Atom_Event* ev = lv2_atom_sequence_begin(&in->body);
+	     !lv2_atom_sequence_is_end(&in->body, in->atom.size, ev);
+	     ev = lv2_atom_sequence_next(ev)) {
+
+		// Play the click for the time slice from last_t until now
+//		play(self, last_t, ev->time.frames);
+
+		// Check if this event is an Object
+		// (or deprecated Blank to tolerate old hosts)
+		if (ev->body.type == uris->atom_Object ||
+		    ev->body.type == uris->atom_Blank) {
+			const LV2_Atom_Object* obj = (const LV2_Atom_Object*)&ev->body;
+			if (obj->body.otype == uris->time_Position) {
+				// Received position information, update
+				update_position(self, obj);
+			}
+		}
+
+		// Update time for next iteration and move to next event
+		last_t = ev->time.frames;
+	}
+
+	// Play for remainder of cycle
+//	play(self, last_t, sample_count);
 }
+
+
 
 /**
    The `deactivate()` method is the counterpart to `activate()`, and is called by
@@ -204,6 +281,7 @@ run(LV2_Handle instance, uint32_t n_samples)
 static void
 deactivate(LV2_Handle instance)
 {
+	log("Deactivate");
 }
 
 /**
