@@ -110,6 +110,9 @@ typedef struct {
 	float  speed;  // Transport speed (usually 0=stop, 1=play)
 	State state;
 
+	int loop_beats; // loop length in beats
+	int loop_samples;  // beats / bpm * samplerate
+
 	uint32_t elapsed_len;  // Frames since the start of the last click
 	uint32_t wave_offset;  // Current play offset in the wave
 
@@ -140,6 +143,8 @@ instantiate(const LV2_Descriptor*     descriptor,
 {
 	log("Instantiate");
 	Alo* self = (Alo*)calloc(1, sizeof(Alo));
+	self->rate = 48000;
+	self->loop_beats = 8;
 
 	LV2_URID_Map* map = NULL;
 	for (int i = 0; features[i]; ++i) {
@@ -241,6 +246,9 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 		// Tempo changed, update BPM
 		self->bpm = ((LV2_Atom_Float*)bpm)->body;
 		log("BPM: %G", self->bpm);
+		log("Beats: %d", self->loop_beats);
+		self->loop_samples = self->loop_beats * self->rate  * 60 / self->bpm;
+		log("Loop_samples: %d", self->loop_samples);
 	}
 	if (speed && speed->type == uris->atom_Float) {
 		// Speed changed, e.g. 0 (stop) to 1 (play)
