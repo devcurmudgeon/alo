@@ -57,6 +57,9 @@ typedef enum {
 	STATE_OFF      // Silent
 } State;
 
+static const size_t STORAGE_MEMORY = 2880000;
+static const size_t NR_OF_BLEND_SAMPLES = 64;
+
 void log(const char *message, ...)
 {
 	FILE* f;
@@ -111,6 +114,8 @@ typedef struct {
 	State state;
 
 	int loop_beats; // loop length in beats
+	int current_loop_beat;
+	int last_bar_beat;
 	int loop_samples;  // beats / bpm * samplerate
 
 	uint32_t elapsed_len;  // Frames since the start of the last click
@@ -119,6 +124,11 @@ typedef struct {
 	// One cycle of a sine wave
 	float*   wave;
 	uint32_t wave_len;
+
+	float* loop; // pointer to memory for recording
+	float* recording; // pointer to memory for playing loop
+	uint32_t loop_index; // index into the loop
+	uint32_t recording_index; // index into the recording
 
 	// Envelope parameters
 	uint32_t attack_len;
@@ -144,7 +154,13 @@ instantiate(const LV2_Descriptor*     descriptor,
 	log("Instantiate");
 	Alo* self = (Alo*)calloc(1, sizeof(Alo));
 	self->rate = 48000;
-	self->loop_beats = 8;
+	self->loop_beats = 16;
+	self->last_bar_beat = 0;
+	self->current_loop_beat = 0;
+
+    self->recording = new float[STORAGE_MEMORY];
+    self->loop = new float[STORAGE_MEMORY];
+	self->loop_index = 0;
 
 	LV2_URID_Map* map = NULL;
 	for (int i = 0; features[i]; ++i) {
@@ -247,7 +263,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 		self->bpm = ((LV2_Atom_Float*)bpm)->body;
 		log("BPM: %G", self->bpm);
 		log("Beats: %d", self->loop_beats);
-		self->loop_samples = self->loop_beats * self->rate  * 60 / self->bpm;
+		self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
 		log("Loop_samples: %d", self->loop_samples);
 	}
 	if (speed && speed->type == uris->atom_Float) {
@@ -257,13 +273,26 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 	}
 	if (beat && beat->type == uris->atom_Float) {
 		// Received a beat position, synchronise
-		// This hard sync may cause clicks, a real plugin would be more graceful
 		const float frames_per_beat = 60.0f / self->bpm * self->rate;
-		const float bar_beats       = ((LV2_Atom_Float*)beat)->body;
-		const float beat_beats      = bar_beats - floorf(bar_beats);
-        log("Bar beats: %G", bar_beats);
-        log("Beatbeats: %G", beat_beats);
-		self->elapsed_len           = beat_beats * frames_per_beat;
+		const float bar_beat       = ((LV2_Atom_Float*)beat)->body;
+		const float beat_beats      = bar_beat - floorf(bar_beat);
+        log("Bar beat: %d", (int)bar_beat);
+        log("Beatbeats: %d", (int)beat_beats);
+		if ((int)bar_beat != self->last_bar_beat) {
+			// we are onto the next beat
+			self->last_bar_beat = (int)bar_beat;
+			log("last bar beat %d", self->last_bar_beat);
+			self->current_loop_beat += 1;
+			log("Current loop beat %d", self->current_loop_beat);
+			if (self->current_loop_beat == self->loop_beats) {
+				log("Restart loop");
+				self->current_loop_beat = 0;
+				self->loop_index = 0;
+				self->recording_index = 0;
+			}
+		}
+
+		self->elapsed_len = beat_beats * frames_per_beat;
 		if (self->elapsed_len < self->attack_len) {
 			self->state = STATE_ATTACK;
 		} else if (self->elapsed_len < self->attack_len + self->decay_len) {
@@ -289,6 +318,8 @@ run(LV2_Handle instance, uint32_t n_samples)
 
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
 		output[pos] = input[pos];
+		self->recording[pos + self->recording_index] = input[pos];
+		self->recording_index += 1;
 	}
 
 	const AloURIs* uris = &self->uris;
