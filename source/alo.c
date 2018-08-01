@@ -18,6 +18,7 @@
 /** Include standard C headers */
 #include <math.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "lv2/lv2plug.in/ns/ext/atom/atom.h"
 #include "lv2/lv2plug.in/ns/ext/atom/util.h"
@@ -66,7 +67,6 @@ typedef struct {
 
 	uint32_t elapsed_len;  // Frames since the start of the last click
 	uint32_t wave_offset;  // Current play offset in the wave
-
 } Alo;
 
 /**
@@ -90,6 +90,22 @@ instantiate(const LV2_Descriptor*     descriptor,
 	return (LV2_Handle)alo;
 }
 
+void log(const char *message, ...)
+{
+	FILE* f;
+	f = fopen("/root/alo.log", "a+");
+
+    char buffer[2048];
+    va_list argumentList;
+    va_start(argumentList, message);
+    vsnprintf(&buffer[0], sizeof(buffer), message, argumentList);
+    va_end(argumentList);
+    fwrite(buffer, 1, strlen(buffer), f);
+    fprintf(f, "\n");
+    fflush(f);
+    fclose(f);
+}
+
 /**
    The `connect_port()` method is called by the host to connect a particular
    port to a buffer.  The plugin must store the data location, but data may not
@@ -108,15 +124,19 @@ connect_port(LV2_Handle instance,
 	switch ((PortIndex)port) {
 	case ALO_INPUT:
 		alo->input = (const float*)data;
+		log("Connect ALO_INPUT %d", port);
 		break;
 	case ALO_OUTPUT:
 		alo->output = (float*)data;
+		log("Connect ALO_OUTPUT %d", port);
 		break;
 	case ALO_BUTTON:
 		alo->button = (float*)data;
+		log("Connect ALO_BUTTON %d", port);
 		break;
 	case ALO_CONTROL:
 		alo->control = (LV2_Atom_Sequence*)data;
+		log("Connect ALO_CONTROL %d", port);
 	}
 }
 
