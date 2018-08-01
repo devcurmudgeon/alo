@@ -19,6 +19,9 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
+#include <sys/time.h>
+
 
 #include "lv2/lv2plug.in/ns/ext/atom/atom.h"
 #include "lv2/lv2plug.in/ns/ext/atom/util.h"
@@ -102,8 +105,21 @@ void log(const char *message, ...)
     va_end(argumentList);
     fwrite(buffer, 1, strlen(buffer), f);
     fprintf(f, "\n");
-    fflush(f);
     fclose(f);
+}
+
+void timestamp()
+{
+    time_t rawtime;
+    struct tm * timeinfo;
+
+    time (&rawtime);
+    timeinfo = localtime (&rawtime);
+
+    struct timeval te;
+    gettimeofday(&te, NULL); // get current time
+    long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
+    log("%s %lld", asctime(timeinfo), milliseconds);
 }
 
 /**
@@ -124,6 +140,7 @@ connect_port(LV2_Handle instance,
 	switch ((PortIndex)port) {
 	case ALO_INPUT:
 		alo->input = (const float*)data;
+		timestamp();
 		log("Connect ALO_INPUT %d", port);
 		break;
 	case ALO_OUTPUT:
