@@ -59,9 +59,14 @@ typedef enum {
 
 static const size_t STORAGE_MEMORY = 2880000;
 static const size_t NR_OF_BLEND_SAMPLES = 64;
+static const bool LOG_ENABLED = false;
 
 void log(const char *message, ...)
 {
+	if (!LOG_ENABLED) {
+		return;
+	}
+
 	FILE* f;
 	f = fopen("/root/alo.log", "a+");
 
