@@ -53,13 +53,13 @@ typedef enum {
 
 typedef enum {
 	STATE_PLAYING, // Recording in the background, playing
-	STATE_IDLE,    // Recording in the background, NOT playing
+	STATE_RECORDING,    // Recording in the background, NOT playing
 	STATE_OFF      // Stopped
 } State;
 
 static const size_t STORAGE_MEMORY = 2880000;
 static const size_t NR_OF_BLEND_SAMPLES = 64;
-static const bool LOG_ENABLED = true;
+static const bool LOG_ENABLED = false;
 
 void log(const char *message, ...)
 {
@@ -212,7 +212,6 @@ connect_port(LV2_Handle instance,
 	switch ((PortIndex)port) {
 	case ALO_INPUT:
 		self->ports.input = (const float*)data;
-		timestamp();
 		log("Connect ALO_INPUT %d", port);
 		break;
 	case ALO_OUTPUT:
@@ -267,6 +266,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 			self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
 			log("BPM: %G", self->bpm);
 			log("Loop_samples: %d", self->loop_samples);
+			self->state = STATE_RECORDING;
 		};
 	}
 	if (speed && speed->type == uris->atom_Float) {
@@ -276,8 +276,8 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 			self->speed = ((LV2_Atom_Float*)speed)->body;
 			self->current_lb = 0;
 			self->loop_index = 0;
-			if (self->speed == 0) {
-				self->state = STATE_OFF;
+			if (self->speed != 0) {
+				self->state = STATE_PLAYING;
 			}
 			log("Speed chage: %G", self->speed);
 		};
@@ -300,17 +300,9 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 			log("Loop index: %d", self->loop_index);
 			self->current_lb += 1;
 		}
-
-//		self->elapsed_len = beat_beats * frames_per_beat;
-//		if (self->elapsed_len < self->attack_len) {
-//			self->state = STATE_ATTACK;
-//		} else if (self->elapsed_len < self->attack_len + self->decay_len) {
-//			self->state = STATE_DECAY;
-//		} else {
-//			self->state = STATE_OFF;
-//		}
 	}
 }
+
 /**
    The `run()` method is the main process function of the plugin.  It processes
    a block of audio in the audio context.  Since this plugin is
@@ -323,27 +315,29 @@ run(LV2_Handle instance, uint32_t n_samples)
 	Alo* self = (Alo*)instance;
 
 	const float* const input  = self->ports.input;
-	float* const       output = self->ports.output;
+	float* const output = self->ports.output;
+	float* const recording = self->recording;
+	float* const loop = self->loop;
+//	const uint32_t frames_per_beat = 60.0f / self->bpm * self->rate;
 
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
-		output[pos] = input[pos];
-		self->recording[pos + self->loop_index] = input[pos];
-		self->loop_index += 1;
+		recording[pos + self->loop_index] = input[pos];
+		if (self->state == STATE_RECORDING) {
+			loop[pos + self->loop_index] = recording[pos + self->loop_index];
+		}
+		output[pos] = loop[pos + self->loop_index];
 	}
+	self->loop_index += n_samples;
 
 	const AloURIs* uris = &self->uris;
 
 	// from metro.c
 	// Work forwards in time frame by frame, handling events as we go
 	const LV2_Atom_Sequence* in = self->ports.control;
-	uint32_t last_t = 0;
 
 	for (const LV2_Atom_Event* ev = lv2_atom_sequence_begin(&in->body);
 	     !lv2_atom_sequence_is_end(&in->body, in->atom.size, ev);
 	     ev = lv2_atom_sequence_next(ev)) {
-
-		// Play the click for the time slice from last_t until now
-//		play(self, last_t, ev->time.frames);
 
 		// Check if this event is an Object
 		// (or deprecated Blank to tolerate old hosts)
@@ -355,15 +349,8 @@ run(LV2_Handle instance, uint32_t n_samples)
 				update_position(self, obj);
 			}
 		}
-
-		// Update time for next iteration and move to next event
-		last_t = ev->time.frames;
 	}
-	// Play for remainder of cycle
-//	play(self, last_t, sample_count);
 }
-
-
 
 /**
    The `deactivate()` method is the counterpart to `activate()`, and is called by
