@@ -59,7 +59,7 @@ typedef enum {
 
 static const size_t STORAGE_MEMORY = 2880000;
 static const size_t NR_OF_BLEND_SAMPLES = 64;
-static const bool LOG_ENABLED = false;
+static const bool LOG_ENABLED = true;
 
 void log(const char *message, ...)
 {
@@ -107,8 +107,8 @@ typedef struct {
 	// Port buffers
 	struct {
 		const float* input;
-		float*       output;
-		float*       button;
+		float* output;
+		int* button;
 		LV2_Atom_Sequence* control;
 	} ports;
 
@@ -164,6 +164,7 @@ instantiate(const LV2_Descriptor*     descriptor,
     self->recording = new float[STORAGE_MEMORY];
     self->loop = new float[STORAGE_MEMORY];
 	self->loop_index = 0;
+	self->state = STATE_RECORDING;
 
 	LV2_URID_Map* map = NULL;
 	for (int i = 0; features[i]; ++i) {
@@ -219,8 +220,8 @@ connect_port(LV2_Handle instance,
 		log("Connect ALO_OUTPUT %d", port);
 		break;
 	case ALO_BUTTON:
-		self->ports.button = (float*)data;
-		log("Connect ALO_BUTTON %d", port);
+		self->ports.button = (int*)data;
+		log("Connect ALO_BUTTON %d. %d", port, self->ports.button);
 		break;
 	case ALO_CONTROL:
 		self->ports.control = (LV2_Atom_Sequence*)data;
@@ -251,6 +252,14 @@ static void
 update_position(Alo* self, const LV2_Atom_Object* obj)
 {
 	AloURIs* const uris = &self->uris;
+
+	bool state = (*self->ports.button) > 0.0f ? true : false;
+	if (state == false) {
+		self->state = STATE_RECORDING;
+	}
+	if (state == true) {
+		self->state = STATE_PLAYING;
+	}
 
 	// Received new transport position/speed
 	LV2_Atom *beat = NULL, *bpm = NULL, *speed = NULL;
@@ -313,7 +322,6 @@ static void
 run(LV2_Handle instance, uint32_t n_samples)
 {
 	Alo* self = (Alo*)instance;
-
 	const float* const input  = self->ports.input;
 	float* const output = self->ports.output;
 	float* const recording = self->recording;
