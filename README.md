@@ -12,16 +12,14 @@ by something else - alo synchronises with midi beats
 
 <------always recording in the background--------------->
 
-________/<^^^^^^^^^^^^^^^^^^^\__________________________    audio in
-        |<| phrase-start
+_______/<<^^^^^^^^^^^^^^^^^^^\____________________________  audio in
+       |<<| phrase-start..goes here--> |<<|
 
       |^^^^^^^| hit loop button anytime in this region
                 now we know loop starts at nearest beat 1 
                 and threshold detect for intro phrase
-		  <----------------------><---------------------> loop is fixed length
-
-          ^^^^^^^^^^^^^^^^^^\__/<^ loop audio
-                               |<= includes phrase-start
+		  |^^^^^^^^^^^^^^^^^^^\_________<<|     loop is fixed length
+                                       |  |     includes phrase-start
 
 - we start in 'recording' mode
 
