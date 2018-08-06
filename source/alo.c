@@ -1,6 +1,8 @@
 /*
-  Copyright 2006-2011 David Robillard <d@drobilla.net>
+  Copyright 2006-2012 David Robillard <d@drobilla.net>
   Copyright 2006 Steve Harris <steve@plugin.org.uk>
+  Copyright 2018 Stevie <modplugins@radig.com>
+  Copyright 2018 Paul Sherwood <devcurmudgeon@gmail.com>
 
   Permission to use, copy, modify, and/or distribute this software for any
   purpose with or without fee is hereby granted, provided that the above
