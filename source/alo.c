@@ -60,12 +60,6 @@ typedef enum {
 	STATE_LOOP_OFF // the loop is not playing
 } State;
 
-typedef enum {
-	NO_CHANGE,
-	START_PLAYING,
-	STOP_PLAYING
-} Transition;
-
 static const size_t STORAGE_MEMORY = 2880000;
 static const size_t NR_OF_BLEND_SAMPLES = 64;
 static const bool LOG_ENABLED = true;
@@ -133,7 +127,6 @@ typedef struct {
 
 	State state;       // we're either recording, playing or not playing
 	bool toggle;       // do we stop/start playing next time
-//	Transition next_up;// at next loop point we'll either stop or start
 
 	bool button_state;
 	uint32_t  button_time; // last time button was pressed
