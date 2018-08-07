@@ -50,7 +50,8 @@ typedef enum {
 	ALO_INPUT = 0,
 	ALO_OUTPUT = 1,
 	ALO_BUTTON = 2,
-	ALO_CONTROL = 3
+	ALO_BARS = 3,
+	ALO_CONTROL = 4
 } PortIndex;
 
 typedef enum {
@@ -110,9 +111,10 @@ typedef struct {
 	// Port buffers
 	struct {
 		const float* input;
-		float* output;
 		int* button;
+		float* bars;
 		LV2_Atom_Sequence* control;
+		float* output;
 	} ports;
 
 	// Variables to keep track of the tempo information sent by the host
@@ -156,7 +158,7 @@ instantiate(const LV2_Descriptor*     descriptor,
 {
 	Alo* self = (Alo*)calloc(1, sizeof(Alo));
 	self->rate = rate;
-	self->loop_beats = 16;
+	self->loop_beats = 0;
 	self->current_bb = 0;
 	self->current_lb = 0;
 
@@ -223,7 +225,11 @@ connect_port(LV2_Handle instance,
 		break;
 	case ALO_BUTTON:
 		self->ports.button = (int*)data;
-		log("Connect ALO_BUTTON %d. %d", port, self->ports.button);
+		log("Connect ALO_BUTTON %d %d", port);
+		break;
+	case ALO_BARS:
+		self->ports.bars = (float*)data;
+		log("Connect ALO_BEATS %d %d", port);
 		break;
 	case ALO_CONTROL:
 		self->ports.control = (LV2_Atom_Sequence*)data;
@@ -255,6 +261,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 {
 	AloURIs* const uris = &self->uris;
 
+	self->loop_beats = 4 * (uint32_t)floorf(*(self->ports.bars));
 	// Received new transport position/speed
 	LV2_Atom *beat = NULL, *bpm = NULL, *speed = NULL;
 	lv2_atom_object_get(obj,
@@ -283,6 +290,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 				self->state = STATE_RECORDING;
 			}
 			log("Speed change: %G", self->speed);
+			log("Loop beats: %d", self->loop_beats);
 		};
 	}
 	if (beat && beat->type == uris->atom_Float) {
@@ -293,7 +301,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 		if (self->current_bb != (uint32_t)bar_beat) {
 			// we are onto the next beat
 			self->current_bb = (uint32_t)bar_beat;
-			if (self->current_lb == self->loop_beats) {
+			if (self->current_bb == 1 && self->current_lb >= self->loop_beats) {
 				log("Restart loop");
 				self->current_lb = 0;
 				self->loop_index = 0;
@@ -354,7 +362,6 @@ run(LV2_Handle instance, uint32_t n_samples)
 	float* const output = self->ports.output;
 	float* const recording = self->recording;
 	float* const loop = self->loop;
-//	const uint32_t frames_per_beat = 60.0f / self->bpm * self->rate;
 
 	bool new_button_state = (*self->ports.button) > 0.0f ? true : false;
 	if (new_button_state != self->button_state) {
