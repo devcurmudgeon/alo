@@ -1,7 +1,7 @@
 A LOoper
 
 This is an LV2 plugin primarily targeted at the MOD Duo but hopefully it should
-work on other systems too. It's based on the the amp.c and metro.c lv2 example
+work on other systems too. It's based on the amp.c and metro.c lv2 example
 plugins, plus some study of the loopor code.
 
 The idea is to provide a mistake-proof way of creating and triggering live
@@ -36,11 +36,10 @@ _______/<<^^^^^^^^^^^^^^^^^^^\____________________________  audio in
 
   if 'recording' mode:
     - figure out when phrase-start happens
-    - copy that chunk to end of the loop
     - switch to loop_on mode at next phrase_start
 
   if loop_on mode:
-    - play the loop from next phrase-start
+    - play the loop from (and looping at) next phrase-start
 
   if loop_off mode:
     - stop playing loop at next phrase-start
