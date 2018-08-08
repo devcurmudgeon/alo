@@ -128,7 +128,6 @@ typedef struct {
 	uint32_t current_lb;    // which beat of the loop we are on (1, 2, ...)
 
 	State state;       // we're either recording, playing or not playing
-	bool toggle;       // do we stop/start playing next time
 
 	bool button_state;
 	uint32_t  button_time; // last time button was pressed
@@ -168,7 +167,6 @@ instantiate(const LV2_Descriptor*     descriptor,
 	self->phrase_start = 0;
 	self->threshold = 0.02;
 	self->state = STATE_RECORDING;
-	self->toggle = false;
 
 	LV2_URID_Map* map = NULL;
 	for (int i = 0; features[i]; ++i) {
@@ -283,12 +281,13 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 		if (self->speed != ((LV2_Atom_Float*)speed)->body) {
 			// Speed changed, e.g. 0 (stop) to 1 (play)
 			// reset the loop start
+			self->button_state = (*self->ports.button) > 0.0f ? true : false;
 			self->speed = ((LV2_Atom_Float*)speed)->body;
 			self->current_lb = 0;
 			self->loop_index = 0;
-			if (self->speed != 0) {
-				self->state = STATE_RECORDING;
-			}
+			self->state = STATE_RECORDING;
+			self->phrase_start = 0;
+			log("STATE: RECORDING");
 			log("Speed change: %G", self->speed);
 			log("Loop beats: %d", self->loop_beats);
 		};
@@ -320,12 +319,12 @@ button_logic(LV2_Handle instance, bool new_button_state)
 {
 	Alo* self = (Alo*)instance;
 
+	log("button logic");
     struct timeval te;
     gettimeofday(&te, NULL); // get current time
     long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
 
 	self->button_state = new_button_state;
-	self->toggle = true;
 
 	int difference = milliseconds - self->button_time;
 	if (new_button_state == true) {
@@ -341,7 +340,6 @@ button_logic(LV2_Handle instance, bool new_button_state)
 			self->state = STATE_RECORDING;
 			self->phrase_start = 0;
 			log("STATE: RECORDING (button reset)");
-			self->toggle = false;			
 		}
 	}
 
@@ -374,21 +372,17 @@ run(LV2_Handle instance, uint32_t n_samples)
 //		log("Sample: %.9f", sample);
 		recording[self->loop_index] = sample;
 		if (self->phrase_start && self->phrase_start == self->loop_index) {
-			if (self->toggle == true) {
-				if (self->state != STATE_LOOP_ON) {
-					self->state = STATE_LOOP_ON;
-					self->toggle = false;
-					log("STATE: LOOP ON");
-				} else {
-					self->state = STATE_LOOP_OFF;
-					self->toggle = false;
-					log("STATE: LOOP OFF");					
-				}
+			if (new_button_state) {
+				self->state = STATE_LOOP_ON;
+				log("STATE: LOOP ON");
+			} else {
+				self->state = STATE_LOOP_OFF;
+				log("STATE: LOOP OFF");
 			}
 		}	
 		if (self->state == STATE_RECORDING) {
 			loop[self->loop_index] = sample;
-			if (self->phrase_start == 0) {
+			if (self->phrase_start == 0 && self->speed != 0) {
 				if (fabs(sample) > self->threshold) {
 					self->phrase_start = self->loop_index;
 					log(">>>>>\n>>>>> DETECTED PHRASE START <<<<<\n>>>>>");
