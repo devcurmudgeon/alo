@@ -327,7 +327,6 @@ button_logic(LV2_Handle instance, bool new_button_state)
 			log("STATE: RECORDING (button reset)");
 		}
 	}
-
 }
 
 /**
@@ -357,12 +356,17 @@ run(LV2_Handle instance, uint32_t n_samples)
 //		log("Sample: %.9f", sample);
 		recording[self->loop_index] = sample;
 		if (self->phrase_start && self->phrase_start == self->loop_index) {
-			if (new_button_state) {
+			if (self->button_state) {
 				self->state = STATE_LOOP_ON;
 				log("STATE: LOOP ON");
 			} else {
-				self->state = STATE_LOOP_OFF;
-				log("STATE: LOOP OFF");
+				if (self->state == STATE_RECORDING) {
+					self->phrase_start = 0;
+					log("STATE: RECORDING... going round again");
+				} else {
+					self->state = STATE_LOOP_OFF;
+					log("STATE: LOOP OFF");
+				}
 			}
 		}	
 		if (self->state == STATE_RECORDING) {
