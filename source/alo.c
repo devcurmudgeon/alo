@@ -49,9 +49,14 @@ typedef struct {
 typedef enum {
 	ALO_INPUT = 0,
 	ALO_OUTPUT = 1,
-	ALO_BUTTON = 2,
-	ALO_BARS = 3,
-	ALO_CONTROL = 4
+	ALO_BARS = 2,
+	ALO_CONTROL = 3,
+	ALO_LOOP1 = 4,
+	ALO_LOOP2 = 5,
+	ALO_LOOP3 = 6,
+	ALO_LOOP4 = 7,
+	ALO_LOOP5 = 8,
+	ALO_LOOP6 = 9,
 } PortIndex;
 
 typedef enum {
@@ -62,7 +67,8 @@ typedef enum {
 } State;
 
 static const size_t STORAGE_MEMORY = 2880000;
-static const bool LOG_ENABLED = false;
+static const int NUM_LOOPS = 6;
+static const bool LOG_ENABLED = true;
 
 void log(const char *message, ...)
 {
@@ -96,7 +102,7 @@ typedef struct {
 	// Port buffers
 	struct {
 		const float* input;
-		int* button;
+		float* loops[NUM_LOOPS];
 		float* bars;
 		LV2_Atom_Sequence* control;
 		float* output;
@@ -118,7 +124,7 @@ typedef struct {
 	uint32_t  button_time; // last time button was pressed
 
 	float* recording; // pointer to memory for recording
-	float* loop; // pointer to memory for playing loop
+	float* loops[NUM_LOOPS]; // pointers to memory for playing loops
 	uint32_t loop_index; // index into the loop
 	uint32_t phrase_start;	// index into recording/loop where phrase starts
 
@@ -147,7 +153,10 @@ instantiate(const LV2_Descriptor*     descriptor,
 	self->current_lb = 0;
 
 	self->recording = (float *)calloc(STORAGE_MEMORY, sizeof(float));
-	self->loop = (float *)calloc(STORAGE_MEMORY, sizeof(float));
+
+	for (int i = 0; i < NUM_LOOPS; i++) {
+		self->loops[i] = (float *)calloc(STORAGE_MEMORY, sizeof(float));
+	}
 	self->loop_index = 0;
 	self->phrase_start = 0;
 	self->threshold = 0.02;
@@ -206,10 +215,6 @@ connect_port(LV2_Handle instance,
 		self->ports.output = (float*)data;
 		log("Connect ALO_OUTPUT %d", port);
 		break;
-	case ALO_BUTTON:
-		self->ports.button = (int*)data;
-		log("Connect ALO_BUTTON %d %d", port);
-		break;
 	case ALO_BARS:
 		self->ports.bars = (float*)data;
 		log("Connect ALO_BEATS %d %d", port);
@@ -217,6 +222,11 @@ connect_port(LV2_Handle instance,
 	case ALO_CONTROL:
 		self->ports.control = (LV2_Atom_Sequence*)data;
 		log("Connect ALO_CONTROL %d", port);
+		break;
+	default:
+		int loop = port - 4;
+		self->ports.loops[loop] = (float*)data;
+		log("Connect ALO_LOOP %d", loop);
 	}
 }
 
@@ -266,7 +276,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 		if (self->speed != ((LV2_Atom_Float*)speed)->body) {
 			// Speed changed, e.g. 0 (stop) to 1 (play)
 			// reset the loop start
-			self->button_state = (*self->ports.button) > 0.0f ? true : false;
+			self->button_state = (*self->ports.loops[0]) > 0.0f ? true : false;
 			self->speed = ((LV2_Atom_Float*)speed)->body;
 			self->current_lb = 0;
 			self->loop_index = 0;
@@ -343,9 +353,9 @@ run(LV2_Handle instance, uint32_t n_samples)
 	float sample = 0.0;
 	float* const output = self->ports.output;
 	float* const recording = self->recording;
-	float* const loop = self->loop;
+	float* const loop = self->loops[0];
 
-	bool new_button_state = (*self->ports.button) > 0.0f ? true : false;
+	bool new_button_state = (*self->ports.loops[0]) > 0.0f ? true : false;
 	if (new_button_state != self->button_state) {
 		button_logic(self, new_button_state);
 	}
@@ -436,7 +446,9 @@ cleanup(LV2_Handle instance)
 {
 	Alo* self = (Alo*)instance;
 
-	free(self->loop);
+	for (int i = 0; i < NUM_LOOPS; i++) {
+		free(self->loops[i]);
+	}
 	free(self->recording);
 	free(self);
 }
