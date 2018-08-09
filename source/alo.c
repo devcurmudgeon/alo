@@ -73,14 +73,14 @@ void log(const char *message, ...)
 	FILE* f;
 	f = fopen("/root/alo.log", "a+");
 
-    char buffer[2048];
-    va_list argumentList;
-    va_start(argumentList, message);
-    vsnprintf(&buffer[0], sizeof(buffer), message, argumentList);
-    va_end(argumentList);
-    fwrite(buffer, 1, strlen(buffer), f);
-    fprintf(f, "\n");
-    fclose(f);
+	char buffer[2048];
+	va_list argumentList;
+	va_start(argumentList, message);
+	vsnprintf(&buffer[0], sizeof(buffer), message, argumentList);
+	va_end(argumentList);
+	fwrite(buffer, 1, strlen(buffer), f);
+	fprintf(f, "\n");
+	fclose(f);
 }
 
 /**
@@ -91,7 +91,7 @@ void log(const char *message, ...)
 typedef struct {
 
 	LV2_URID_Map* map;   // URID map feature
-	AloURIs     uris;  // Cache of mapped URIDs
+	AloURIs	    uris;    // Cache of mapped URIDs
 
 	// Port buffers
 	struct {
@@ -103,16 +103,16 @@ typedef struct {
 	} ports;
 
 	// Variables to keep track of the tempo information sent by the host
-	double rate;            // Sample rate
-	float  bpm;             // Beats per minute (tempo)
-	float  speed;           // Transport speed (usually 0=stop, 1=play)
-	float threshold;        // minimum level to trigger loop start
-	uint32_t loop_beats;    // loop length in beats
-	uint32_t loop_samples;  // loop length in samples
-	uint32_t current_bb;    // which beat of the bar we are on (1, 2, 3, 0)
-	uint32_t current_lb;    // which beat of the loop we are on (1, 2, ...)
+	double rate;		// Sample rate
+	float  bpm;		// Beats per minute (tempo)
+	float  speed;		// Transport speed (usually 0=stop, 1=play)
+	float threshold;	// minimum level to trigger loop start
+	uint32_t loop_beats;	// loop length in beats
+	uint32_t loop_samples;	// loop length in samples
+	uint32_t current_bb;	// which beat of the bar we are on (1, 2, 3, 0)
+	uint32_t current_lb;	// which beat of the loop we are on (1, 2, ...)
 
-	State state;       // we're either recording, playing or not playing
+	State state;	   // we're either recording, playing or not playing
 
 	bool button_state;
 	uint32_t  button_time; // last time button was pressed
@@ -120,7 +120,7 @@ typedef struct {
 	float* recording; // pointer to memory for recording
 	float* loop; // pointer to memory for playing loop
 	uint32_t loop_index; // index into the loop
-	uint32_t phrase_start;  // index into recording/loop where phrase starts
+	uint32_t phrase_start;	// index into recording/loop where phrase starts
 
 } Alo;
 
@@ -136,18 +136,18 @@ typedef struct {
 */
 static LV2_Handle
 instantiate(const LV2_Descriptor*     descriptor,
-            double                    rate,
-            const char*               bundle_path,
-            const LV2_Feature* const* features)
+	    double		      rate,
+	    const char*		      bundle_path,
+	    const LV2_Feature* const* features)
 {
 	Alo* self = (Alo*)calloc(1, sizeof(Alo));
 	self->rate = rate;
 	self->loop_beats = 0;
 	self->current_bb = 0;
 	self->current_lb = 0;
-
-    self->recording = new float[STORAGE_MEMORY];
-    self->loop = new float[STORAGE_MEMORY];
+	
+	self->recording = new float[STORAGE_MEMORY];
+	self->loop = new float[STORAGE_MEMORY];
 	self->loop_index = 0;
 	self->phrase_start = 0;
 	self->threshold = 0.02;
@@ -168,16 +168,16 @@ instantiate(const LV2_Descriptor*     descriptor,
 	// Map URIS
 	AloURIs* const uris = &self->uris;
 	self->map = map;
-	uris->atom_Blank          = map->map(map->handle, LV2_ATOM__Blank);
-	uris->atom_Float          = map->map(map->handle, LV2_ATOM__Float);
-	uris->atom_Object         = map->map(map->handle, LV2_ATOM__Object);
-	uris->atom_Path           = map->map(map->handle, LV2_ATOM__Path);
-	uris->atom_Resource       = map->map(map->handle, LV2_ATOM__Resource);
-	uris->atom_Sequence       = map->map(map->handle, LV2_ATOM__Sequence);
-	uris->time_Position       = map->map(map->handle, LV2_TIME__Position);
-	uris->time_barBeat        = map->map(map->handle, LV2_TIME__barBeat);
+	uris->atom_Blank	  = map->map(map->handle, LV2_ATOM__Blank);
+	uris->atom_Float	  = map->map(map->handle, LV2_ATOM__Float);
+	uris->atom_Object	  = map->map(map->handle, LV2_ATOM__Object);
+	uris->atom_Path		  = map->map(map->handle, LV2_ATOM__Path);
+	uris->atom_Resource	  = map->map(map->handle, LV2_ATOM__Resource);
+	uris->atom_Sequence	  = map->map(map->handle, LV2_ATOM__Sequence);
+	uris->time_Position	  = map->map(map->handle, LV2_TIME__Position);
+	uris->time_barBeat	  = map->map(map->handle, LV2_TIME__barBeat);
 	uris->time_beatsPerMinute = map->map(map->handle, LV2_TIME__beatsPerMinute);
-	uris->time_speed          = map->map(map->handle, LV2_TIME__speed);
+	uris->time_speed	  = map->map(map->handle, LV2_TIME__speed);
 
 	return (LV2_Handle)self;
 }
@@ -192,8 +192,8 @@ instantiate(const LV2_Descriptor*     descriptor,
 */
 static void
 connect_port(LV2_Handle instance,
-             uint32_t   port,
-             void*      data)
+	     uint32_t	port,
+	     void*	data)
 {
 	Alo* self = (Alo*)instance;
 
@@ -222,8 +222,8 @@ connect_port(LV2_Handle instance,
 
 /**
    The `activate()` method is called by the host to initialise and prepare the
-   plugin instance for running.  The plugin must reset all internal state
-   except for buffer locations set by `connect_port()`.  Since this plugin has
+   plugin instance for running.	 The plugin must reset all internal state
+   except for buffer locations set by `connect_port()`.	 Since this plugin has
    no other internal state, this method does nothing.
 
    This method is in the ``instantiation'' threading class, so no other
@@ -236,7 +236,7 @@ activate(LV2_Handle instance)
 }
 
 /**
-   Update the current (midi) position based on a host message.  This is called
+   Update the current (midi) position based on a host message.	This is called
    by run() when a time:Position is received.
 */
 static void
@@ -248,10 +248,10 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 	// Received new transport position/speed
 	LV2_Atom *beat = NULL, *bpm = NULL, *speed = NULL;
 	lv2_atom_object_get(obj,
-	                    uris->time_barBeat, &beat,
-	                    uris->time_beatsPerMinute, &bpm,
-	                    uris->time_speed, &speed,
-	                    NULL);
+			    uris->time_barBeat, &beat,
+			    uris->time_beatsPerMinute, &bpm,
+			    uris->time_speed, &speed,
+			    NULL);
 	if (bpm && bpm->type == uris->atom_Float) {
 		if (self->bpm != ((LV2_Atom_Float*)bpm)->body) {
 			// Tempo changed, update BPM
@@ -281,7 +281,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 		// Received a beat position, synchronise
 //		const float frames_per_beat = 60.0f / self->bpm * self->rate;
 		const float bar_beat = ((LV2_Atom_Float*)beat)->body;
-//		const float beat_beats      = bar_beats - floorf(bar_beats);
+//		const float beat_beats	    = bar_beats - floorf(bar_beats);
 		if (self->current_bb != (uint32_t)bar_beat) {
 			// we are onto the next beat
 			self->current_bb = (uint32_t)bar_beat;
@@ -290,7 +290,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 				self->current_lb = 0;
 				self->loop_index = 0;
 			}
-	        log("Beats bar(%d) loop(%d)", self->current_bb, self->current_lb);
+		log("Beats bar(%d) loop(%d)", self->current_bb, self->current_lb);
 			self->current_lb += 1;
 		}
 	}
@@ -305,9 +305,9 @@ button_logic(LV2_Handle instance, bool new_button_state)
 	Alo* self = (Alo*)instance;
 
 	log("button logic");
-    struct timeval te;
-    gettimeofday(&te, NULL); // get current time
-    long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
+	struct timeval te;
+	gettimeofday(&te, NULL); // get current time
+	long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
 
 	self->button_state = new_button_state;
 
@@ -409,7 +409,7 @@ run(LV2_Handle instance, uint32_t n_samples)
    the host after running the plugin.  It indicates that the host will not call
    `run()` again until another call to `activate()` and is mainly useful for more
    advanced plugins with ``live'' characteristics such as those with auxiliary
-   processing threads.  As with `activate()`, this plugin has no use for this
+   processing threads.	As with `activate()`, this plugin has no use for this
    information so this method does nothing.
 
    This method is in the ``instantiation'' threading class, so no other
@@ -437,7 +437,7 @@ cleanup(LV2_Handle instance)
    The `extension_data()` function returns any extension data supported by the
    plugin.  Note that this is not an instance method, but a function on the
    plugin descriptor.  It is usually used by plugins to implement additional
-   interfaces.  This plugin does not have any extension data, so this function
+   interfaces.	This plugin does not have any extension data, so this function
    returns NULL.
 
    This method is in the ``discovery'' threading class, so no other functions
@@ -480,7 +480,7 @@ const LV2_Descriptor*
 lv2_descriptor(uint32_t index)
 {
 	switch (index) {
-	case 0:  return &descriptor;
+	case 0:	 return &descriptor;
 	default: return NULL;
 	}
 }
