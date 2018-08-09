@@ -62,7 +62,7 @@ typedef enum {
 } State;
 
 static const size_t STORAGE_MEMORY = 2880000;
-static const bool LOG_ENABLED = true;
+static const bool LOG_ENABLED = false;
 
 void log(const char *message, ...)
 {
