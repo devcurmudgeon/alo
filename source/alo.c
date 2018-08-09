@@ -62,7 +62,6 @@ typedef enum {
 } State;
 
 static const size_t STORAGE_MEMORY = 2880000;
-static const size_t NR_OF_BLEND_SAMPLES = 64;
 static const bool LOG_ENABLED = true;
 
 void log(const char *message, ...)
@@ -82,20 +81,6 @@ void log(const char *message, ...)
     fwrite(buffer, 1, strlen(buffer), f);
     fprintf(f, "\n");
     fclose(f);
-}
-
-void timestamp()
-{
-    time_t rawtime;
-    struct tm * timeinfo;
-
-    time(&rawtime);
-    timeinfo = localtime(&rawtime);
-
-    struct timeval te;
-    gettimeofday(&te, NULL); // get current time
-    long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
-    log("%s %lld", asctime(timeinfo), milliseconds);
 }
 
 /**
