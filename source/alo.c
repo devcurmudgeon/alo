@@ -145,9 +145,9 @@ instantiate(const LV2_Descriptor*     descriptor,
 	self->loop_beats = 0;
 	self->current_bb = 0;
 	self->current_lb = 0;
-	
-	self->recording = new float[STORAGE_MEMORY];
-	self->loop = new float[STORAGE_MEMORY];
+
+	self->recording = (float *)calloc(STORAGE_MEMORY, sizeof(float));
+	self->loop = (float *)calloc(STORAGE_MEMORY, sizeof(float));
 	self->loop_index = 0;
 	self->phrase_start = 0;
 	self->threshold = 0.02;
@@ -434,7 +434,11 @@ deactivate(LV2_Handle instance)
 static void
 cleanup(LV2_Handle instance)
 {
-	free(instance);
+	Alo* self = (Alo*)instance;
+
+	free(self->loop);
+	free(self->recording);
+	free(self);
 }
 
 /**
