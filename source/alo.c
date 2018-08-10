@@ -118,15 +118,15 @@ typedef struct {
 	uint32_t current_bb;	// which beat of the bar we are on (1, 2, 3, 0)
 	uint32_t current_lb;	// which beat of the loop we are on (1, 2, ...)
 
-	State state;	   // we're either recording, playing or not playing
+	State state[NUM_LOOPS];	   // we're recording, playing or not playing
 
-	bool button_state;
-	uint32_t  button_time; // last time button was pressed
+	bool button_state[NUM_LOOPS];
+	uint32_t  button_time[NUM_LOOPS]; // last time button was pressed
 
-	float* recording; // pointer to memory for recording
 	float* loops[NUM_LOOPS]; // pointers to memory for playing loops
-	uint32_t loop_index; // index into the loop
-	uint32_t phrase_start;	// index into recording/loop where phrase starts
+	uint32_t phrase_start[NUM_LOOPS]; // index into recording/loop
+	float* recording;    // pointer to memory for recording - for all loops
+	uint32_t loop_index; // index into loop for current play point
 
 } Alo;
 
@@ -156,11 +156,11 @@ instantiate(const LV2_Descriptor*     descriptor,
 
 	for (int i = 0; i < NUM_LOOPS; i++) {
 		self->loops[i] = (float *)calloc(STORAGE_MEMORY, sizeof(float));
+		self->phrase_start[i] = 0;
+		self->state[i] = STATE_RECORDING;
 	}
 	self->loop_index = 0;
-	self->phrase_start = 0;
 	self->threshold = 0.02;
-	self->state = STATE_RECORDING;
 
 	LV2_URID_Map* map = NULL;
 	for (int i = 0; features[i]; ++i) {
@@ -269,20 +269,25 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 			self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
 			log("BPM: %G", self->bpm);
 			log("Loop_samples: %d", self->loop_samples);
-			self->state = STATE_RECORDING;
-		};
+			for (int i = 0; i < NUM_LOOPS; i++) {
+				self->state[i] = STATE_RECORDING;
+				log("STATE: RECORDING (BPM change) [%d]", i);
+			}
+		}
 	}
 	if (speed && speed->type == uris->atom_Float) {
 		if (self->speed != ((LV2_Atom_Float*)speed)->body) {
 			// Speed changed, e.g. 0 (stop) to 1 (play)
 			// reset the loop start
-			self->button_state = (*self->ports.loops[0]) > 0.0f ? true : false;
 			self->speed = ((LV2_Atom_Float*)speed)->body;
 			self->current_lb = 0;
 			self->loop_index = 0;
-			self->state = STATE_RECORDING;
-			self->phrase_start = 0;
-			log("STATE: RECORDING");
+			for (int i = 0; i < NUM_LOOPS; i++) {
+				self->button_state[i] = (*self->ports.loops[i]) > 0.0f ? true : false;
+				self->state[i] = STATE_RECORDING;
+				self->phrase_start[i] = 0;
+				log("STATE: RECORDING (speed change) [%d]", i);
+			}
 			log("Speed change: %G", self->speed);
 			log("Loop beats: %d", self->loop_beats);
 		};
@@ -310,31 +315,27 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
    Adjust self->state based on button presses.
 */
 static void
-button_logic(LV2_Handle instance, bool new_button_state)
+button_logic(LV2_Handle instance, bool new_button_state, int i)
 {
 	Alo* self = (Alo*)instance;
 
-	log("button logic");
+	log("button logic for loop [%d]", i);
 	struct timeval te;
 	gettimeofday(&te, NULL); // get current time
 	long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
 
-	self->button_state = new_button_state;
+	self->button_state[i] = new_button_state;
 
-	int difference = milliseconds - self->button_time;
+	int difference = milliseconds - self->button_time[i];
 	if (new_button_state == true) {
-		self->button_time = milliseconds;
-		// we are about to start playing loop, need to work out phrase_start
-		if (self->current_lb < 2 || self->loop_beats - self->current_lb < 2) {
-
-		}
+		self->button_time[i] = milliseconds;
 	} else {
 		if (difference < 1000) {
 			// double/triple press ending with off, user is resetting
 			// so back to recording mode
-			self->state = STATE_RECORDING;
-			self->phrase_start = 0;
-			log("STATE: RECORDING (button reset)");
+			self->state[i] = STATE_RECORDING;
+			self->phrase_start[i] = 0;
+			log("STATE: RECORDING (button reset) [%d]", i);
 		}
 	}
 }
@@ -353,44 +354,47 @@ run(LV2_Handle instance, uint32_t n_samples)
 	float sample = 0.0;
 	float* const output = self->ports.output;
 	float* const recording = self->recording;
-	float* const loop = self->loops[0];
 
-	bool new_button_state = (*self->ports.loops[0]) > 0.0f ? true : false;
-	if (new_button_state != self->button_state) {
-		button_logic(self, new_button_state);
+	for (int i = 0; i < NUM_LOOPS; i++) {
+		bool new_button_state = (*self->ports.loops[i]) > 0.0f ? true : false;
+		if (new_button_state != self->button_state[i]) {
+			button_logic(self, new_button_state, i);
+		}
 	}
-
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
 		// recording always happens
 		sample = input[pos];
+		output[pos] = sample;
 //		log("Sample: %.9f", sample);
 		recording[self->loop_index] = sample;
-		if (self->phrase_start && self->phrase_start == self->loop_index) {
-			if (self->button_state) {
-				self->state = STATE_LOOP_ON;
-				log("STATE: LOOP ON");
-			} else {
-				if (self->state == STATE_RECORDING) {
-					self->phrase_start = 0;
-					log("STATE: RECORDING... going round again");
+		for (int i = 0; i < NUM_LOOPS; i++) {
+			if (self->phrase_start[i] && self->phrase_start[i] == self->loop_index) {
+				if (self->button_state[i]) {
+					self->state[i] = STATE_LOOP_ON;
+					log("STATE: LOOP ON [%d]", i);
 				} else {
-					self->state = STATE_LOOP_OFF;
-					log("STATE: LOOP OFF");
+					if (self->state[i] == STATE_RECORDING) {
+						self->phrase_start[i] = 0;
+						log("STATE: RECORDING... going round again [%d]", i);
+					} else {
+						self->state[i] = STATE_LOOP_OFF;
+						log("STATE: LOOP OFF [%d]", i);
+					}
 				}
 			}
-		}	
-		if (self->state == STATE_RECORDING) {
-			loop[self->loop_index] = sample;
-			if (self->phrase_start == 0 && self->speed != 0) {
-				if (fabs(sample) > self->threshold) {
-					self->phrase_start = self->loop_index;
-					log(">>>>>\n>>>>> DETECTED PHRASE START <<<<<\n>>>>>");
+			float* const loop = self->loops[i];
+			if (self->state[i] == STATE_RECORDING) {
+				loop[self->loop_index] = sample;
+				if (self->phrase_start[i] == 0 && self->speed != 0) {
+					if (fabs(sample) > self->threshold) {
+						self->phrase_start[i] = self->loop_index;
+						log(">>>\n>>> DETECTED PHRASE START [%d]<<<\n>>>", i);
+					}
 				}
 			}
-		}
-		output[pos] = input[pos];
-		if (self-> state == STATE_LOOP_ON) {
-			output[pos] = sample + loop[self->loop_index];
+			if (self-> state[i] == STATE_LOOP_ON) {
+				output[pos] += loop[self->loop_index];
+			}
 		}
 		self->loop_index += 1;
 	}
@@ -403,12 +407,12 @@ run(LV2_Handle instance, uint32_t n_samples)
 
 	for (const LV2_Atom_Event* ev = lv2_atom_sequence_begin(&in->body);
 	     !lv2_atom_sequence_is_end(&in->body, in->atom.size, ev);
+
 	     ev = lv2_atom_sequence_next(ev)) {
 
 		// Check if this event is an Object
 		// (or deprecated Blank to tolerate old hosts)
-		if (ev->body.type == uris->atom_Object ||
-		    ev->body.type == uris->atom_Blank) {
+		if (ev->body.type == uris->atom_Object || ev->body.type == uris->atom_Blank) {
 			const LV2_Atom_Object* obj = (const LV2_Atom_Object*)&ev->body;
 			if (obj->body.otype == uris->time_Position) {
 				// Received position information, update
@@ -429,6 +433,7 @@ run(LV2_Handle instance, uint32_t n_samples)
    This method is in the ``instantiation'' threading class, so no other
    methods on this instance will be called concurrently with it.
 */
+
 static void
 deactivate(LV2_Handle instance)
 {
