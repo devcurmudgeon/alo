@@ -270,7 +270,9 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 			log("BPM: %G", self->bpm);
 			log("Loop_samples: %d", self->loop_samples);
 			for (int i = 0; i < NUM_LOOPS; i++) {
+				self->button_state[i] = (*self->ports.loops[i]) > 0.0f ? true : false;
 				self->state[i] = STATE_RECORDING;
+				self->phrase_start[i] = 0;
 				log("STATE: RECORDING (BPM change) [%d]", i);
 			}
 		}
