@@ -281,6 +281,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 		if (self->speed != ((LV2_Atom_Float*)speed)->body) {
 			// Speed changed, e.g. 0 (stop) to 1 (play)
 			// reset the loop start
+			self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
 			self->speed = ((LV2_Atom_Float*)speed)->body;
 			self->current_lb = 0;
 			self->loop_index = 0;
@@ -399,6 +400,9 @@ run(LV2_Handle instance, uint32_t n_samples)
 			}
 		}
 		self->loop_index += 1;
+		if (self->loop_index == self->loop_samples) {
+			self->loop_index = 0;
+		}
 	}
 
 	const AloURIs* uris = &self->uris;
