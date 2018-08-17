@@ -254,7 +254,6 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 {
 	AloURIs* const uris = &self->uris;
 
-	self->loop_beats = 4 * (uint32_t)floorf(*(self->ports.bars));
 	// Received new transport position/speed
 	LV2_Atom *beat = NULL, *bpm = NULL, *speed = NULL;
 	lv2_atom_object_get(obj,
@@ -266,6 +265,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 		if (self->bpm != ((LV2_Atom_Float*)bpm)->body) {
 			// Tempo changed, update BPM
 			self->bpm = ((LV2_Atom_Float*)bpm)->body;
+			self->loop_beats = 4 * (uint32_t)floorf(*(self->ports.bars));
 			self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
 			log("BPM: %G", self->bpm);
 			log("Loop_samples: %d", self->loop_samples);
@@ -281,6 +281,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 		if (self->speed != ((LV2_Atom_Float*)speed)->body) {
 			// Speed changed, e.g. 0 (stop) to 1 (play)
 			// reset the loop start
+			self->loop_beats = 4 * (uint32_t)floorf(*(self->ports.bars));
 			self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
 			self->speed = ((LV2_Atom_Float*)speed)->body;
 			self->current_lb = 0;
@@ -303,12 +304,12 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 		if (self->current_bb != (uint32_t)bar_beat) {
 			// we are onto the next beat
 			self->current_bb = (uint32_t)bar_beat;
-			if (self->current_bb == 1 && self->current_lb >= self->loop_beats) {
+			if (self->current_lb == self->loop_beats) {
 				log("Restart loop");
 				self->current_lb = 0;
 				self->loop_index = 0;
 			}
-		log("Beats bar(%d) loop(%d)", self->current_bb, self->current_lb);
+			log("Beats bar(%d) loop(%d)", self->current_bb, self->current_lb);
 			self->current_lb += 1;
 		}
 	}
