@@ -305,11 +305,9 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 			// we are onto the next beat
 			self->current_bb = (uint32_t)bar_beat;
 			if (self->current_lb == self->loop_beats) {
-				log("Restart loop");
 				self->current_lb = 0;
-				self->loop_index = 0;
 			}
-			log("Beats bar(%d) loop(%d)", self->current_bb, self->current_lb);
+			log("Beat:[%d][%d] index[%d] beat[%G]", self->current_bb, self->current_lb, self->loop_index, bar_beat);
 			self->current_lb += 1;
 		}
 	}
@@ -323,7 +321,6 @@ button_logic(LV2_Handle instance, bool new_button_state, int i)
 {
 	Alo* self = (Alo*)instance;
 
-	log("button logic for loop [%d]", i);
 	struct timeval te;
 	gettimeofday(&te, NULL); // get current time
 	long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
@@ -332,8 +329,10 @@ button_logic(LV2_Handle instance, bool new_button_state, int i)
 
 	int difference = milliseconds - self->button_time[i];
 	if (new_button_state == true) {
+		log("button ON for loop [%d]", i);
 		self->button_time[i] = milliseconds;
 	} else {
+		log("button OFF for loop [%d]", i);
 		if (difference < 1000) {
 			// double/triple press ending with off, user is resetting
 			// so back to recording mode
@@ -375,28 +374,32 @@ run(LV2_Handle instance, uint32_t n_samples)
 			if (self->phrase_start[i] && self->phrase_start[i] == self->loop_index) {
 				if (self->button_state[i]) {
 					self->state[i] = STATE_LOOP_ON;
-					log("STATE: LOOP ON [%d]", i);
+					log("DECISION: LOOP ON [%d][%d]", i, self->loop_index);
 				} else {
 					if (self->state[i] == STATE_RECORDING) {
 						self->phrase_start[i] = 0;
-						log("STATE: RECORDING... going round again [%d]", i);
+						log("DECISION: Abandon phrase [%d][%d]", i, self->loop_index);
 					} else {
 						self->state[i] = STATE_LOOP_OFF;
-						log("STATE: LOOP OFF [%d]", i);
+						log("DECISION: LOOP OFF [%d][%d]", i, self->loop_index);
 					}
 				}
 			}
+
 			float* const loop = self->loops[i];
 			if (self->state[i] == STATE_RECORDING) {
 				loop[self->loop_index] = sample;
 				if (self->phrase_start[i] == 0 && self->speed != 0) {
 					if (fabs(sample) > self->threshold) {
 						self->phrase_start[i] = self->loop_index;
-						log(">>>\n>>> DETECTED PHRASE START [%d]<<<\n>>>", i);
+						if (self->button_state[i]) {
+							log(">>> DETECTED PHRASE START [%d][%d] <<<", i, self->loop_index);
+						}
 					}
 				}
 			}
-			if (self-> state[i] == STATE_LOOP_ON) {
+
+			if (self-> state[i] == STATE_LOOP_ON && self->speed != 0) {
 				output[pos] += loop[self->loop_index];
 			}
 		}
