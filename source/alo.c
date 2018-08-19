@@ -267,6 +267,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 			self->bpm = ((LV2_Atom_Float*)bpm)->body;
 			self->loop_beats = 4 * (uint32_t)floorf(*(self->ports.bars));
 			self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
+			self->loop_index = 0;
 			log("BPM: %G", self->bpm);
 			log("Loop_samples: %d", self->loop_samples);
 			for (int i = 0; i < NUM_LOOPS; i++) {
