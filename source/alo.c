@@ -291,10 +291,9 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 				self->button_state[i] = (*self->ports.loops[i]) > 0.0f ? true : false;
 				self->state[i] = STATE_RECORDING;
 				self->phrase_start[i] = 0;
-				log("STATE: RECORDING (speed change) [%d]", i);
 			}
 			log("Speed change: %G", self->speed);
-			log("Loop beats: %d", self->loop_beats);
+			log("Loop: [%d][%d]", self->loop_beats, self->loop_samples);
 		};
 	}
 	if (beat && beat->type == uris->atom_Float) {
@@ -372,35 +371,34 @@ run(LV2_Handle instance, uint32_t n_samples)
 //		log("Sample: %.9f", sample);
 		recording[self->loop_index] = sample;
 		for (int i = 0; i < NUM_LOOPS; i++) {
+
 			if (self->phrase_start[i] && self->phrase_start[i] == self->loop_index) {
 				if (self->button_state[i]) {
 					self->state[i] = STATE_LOOP_ON;
-					log("DECISION: LOOP ON [%d][%d]", i, self->loop_index);
+					log("[%d]DECISION: LOOP ON [%d]", i, self->loop_index);
 				} else {
 					if (self->state[i] == STATE_RECORDING) {
 						self->phrase_start[i] = 0;
-						log("DECISION: Abandon phrase [%d][%d]", i, self->loop_index);
+						log("[%d]DECISION: Abandon phrase [%d]", i, self->loop_index);
 					} else {
 						self->state[i] = STATE_LOOP_OFF;
-						log("DECISION: LOOP OFF [%d][%d]", i, self->loop_index);
+						log("[%d]DECISION: LOOP OFF [%d]", i, self->loop_index);
 					}
 				}
 			}
 
 			float* const loop = self->loops[i];
-			if (self->state[i] == STATE_RECORDING) {
+			if (self->state[i] == STATE_RECORDING && self->button_state[i]) {
 				loop[self->loop_index] = sample;
 				if (self->phrase_start[i] == 0 && self->speed != 0) {
 					if (fabs(sample) > self->threshold) {
 						self->phrase_start[i] = self->loop_index;
-						if (self->button_state[i]) {
-							log(">>> DETECTED PHRASE START [%d][%d] <<<", i, self->loop_index);
-						}
+						log("[%d]>>> DETECTED PHRASE START [%d]<<<", i, self->loop_index);
 					}
 				}
 			}
 
-			if (self-> state[i] == STATE_LOOP_ON && self->speed != 0) {
+			if (self->state[i] == STATE_LOOP_ON && self->speed != 0) {
 				output[pos] += loop[self->loop_index];
 			}
 		}
