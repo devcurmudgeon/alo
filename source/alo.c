@@ -57,6 +57,7 @@ typedef enum {
 	ALO_LOOP4 = 7,
 	ALO_LOOP5 = 8,
 	ALO_LOOP6 = 9,
+	ALO_THRESHOLD = 10,
 } PortIndex;
 
 typedef enum {
@@ -89,6 +90,16 @@ void log(const char *message, ...)
 	fclose(f);
 }
 
+///
+/// Convert an input parameter expressed as db into a linear float value
+///
+static float dbToFloat(float db)
+{
+    if (db <= -90.0f)
+        return 0.0f;
+    return powf(10.0f, db * 0.05f);
+}
+
 /**
    Every plugin defines a private structure for the plugin instance.  All data
    associated with a plugin instance is stored here, and is available to
@@ -105,6 +116,7 @@ typedef struct {
 		float* loops[NUM_LOOPS];
 		float* bars;
 		LV2_Atom_Sequence* control;
+		float* threshold;
 		float* output;
 	} ports;
 
@@ -160,7 +172,7 @@ instantiate(const LV2_Descriptor*     descriptor,
 		self->state[i] = STATE_RECORDING;
 	}
 	self->loop_index = 0;
-	self->threshold = 0.02;
+	self->threshold = 0.0;
 
 	LV2_URID_Map* map = NULL;
 	for (int i = 0; features[i]; ++i) {
@@ -222,6 +234,10 @@ connect_port(LV2_Handle instance,
 	case ALO_CONTROL:
 		self->ports.control = (LV2_Atom_Sequence*)data;
 		log("Connect ALO_CONTROL %d", port);
+		break;
+	case ALO_THRESHOLD:
+		self->ports.threshold = (float*)data;
+		log("Connect ALO_THRESHOLD %d %d", port);
 		break;
 	default:
 		int loop = port - 4;
@@ -357,6 +373,7 @@ run(LV2_Handle instance, uint32_t n_samples)
 	float sample = 0.0;
 	float* const output = self->ports.output;
 	float* const recording = self->recording;
+	self->threshold = dbToFloat(*self->ports.threshold);
 
 	for (int i = 0; i < NUM_LOOPS; i++) {
 		bool new_button_state = (*self->ports.loops[i]) > 0.0f ? true : false;
