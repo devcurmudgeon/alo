@@ -7,10 +7,10 @@
 ALO_VERSION = master
 ALO_BUNDLES = alo.lv2
 
-#ALO_SITE = $(call github,devcurmudgeon,alo,$(ALO_VERSION))
+ALO_SITE = $(call github,devcurmudgeon,alo,$(ALO_VERSION))
 # or for local development ...
-ALO_SITE_METHOD = local
-ALO_SITE = /tmp/moddevices/alo/
+#ALO_SITE_METHOD = local
+#ALO_SITE = /tmp/moddevices/alo/
 
 # call make with the current arguments and path. "$(@D)" is the build directory.
 ALO_TARGET_MAKE = $(TARGET_MAKE_ENV) $(TARGET_CONFIGURE_OPTS) $(MAKE) -C $(@D)/source
