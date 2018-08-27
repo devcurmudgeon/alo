@@ -43,6 +43,7 @@ typedef struct {
 	LV2_URID time_Position;
 	LV2_URID time_barBeat;
 	LV2_URID time_beatsPerMinute;
+	LV2_URID time_beatsPerBar;
 	LV2_URID time_speed;
 } AloURIs;
 
@@ -123,6 +124,7 @@ typedef struct {
 	// Variables to keep track of the tempo information sent by the host
 	double rate;		// Sample rate
 	float  bpm;		// Beats per minute (tempo)
+	float  bpb;		// Beats per bar
 	float  speed;		// Transport speed (usually 0=stop, 1=play)
 	float threshold;	// minimum level to trigger loop start
 	uint32_t loop_beats;	// loop length in beats
@@ -160,6 +162,7 @@ instantiate(const LV2_Descriptor*     descriptor,
 {
 	Alo* self = (Alo*)calloc(1, sizeof(Alo));
 	self->rate = rate;
+	self->bpb = 4;
 	self->loop_beats = 0;
 	self->current_bb = 0;
 	self->current_lb = 0;
@@ -199,6 +202,7 @@ instantiate(const LV2_Descriptor*     descriptor,
 	uris->time_barBeat	  = map->map(map->handle, LV2_TIME__barBeat);
 	uris->time_beatsPerMinute = map->map(map->handle, LV2_TIME__beatsPerMinute);
 	uris->time_speed	  = map->map(map->handle, LV2_TIME__speed);
+	uris->time_beatsPerBar = map->map(map->handle, LV2_TIME__beatsPerBar);
 
 	return (LV2_Handle)self;
 }
@@ -246,6 +250,23 @@ connect_port(LV2_Handle instance,
 	}
 }
 
+static void
+reset(Alo* self)
+{
+	self->loop_beats = (uint32_t)floorf(self->bpb) * (uint32_t)floorf(*(self->ports.bars));
+	self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
+	self->loop_index = 0;
+	log("Loop beats: %d", self->loop_beats);
+	log("BPM: %G", self->bpm);
+	log("Loop_samples: %d", self->loop_samples);
+	for (int i = 0; i < NUM_LOOPS; i++) {
+		self->button_state[i] = (*self->ports.loops[i]) > 0.0f ? true : false;
+		self->state[i] = STATE_RECORDING;
+		self->phrase_start[i] = 0;
+		log("STATE: RECORDING (reset) [%d]", i);
+	}
+}
+
 /**
    The `activate()` method is called by the host to initialise and prepare the
    plugin instance for running.	 The plugin must reset all internal state
@@ -271,43 +292,34 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 	AloURIs* const uris = &self->uris;
 
 	// Received new transport position/speed
-	LV2_Atom *beat = NULL, *bpm = NULL, *speed = NULL;
+	LV2_Atom *beat = NULL, *bpm = NULL, *bpb = NULL, *speed = NULL;
 	lv2_atom_object_get(obj,
 			    uris->time_barBeat, &beat,
 			    uris->time_beatsPerMinute, &bpm,
 			    uris->time_speed, &speed,
+			    uris->time_beatsPerBar, &bpb,
 			    NULL);
+
+	if (bpb && bpb->type == uris->atom_Float) {
+		if (self->bpb != ((LV2_Atom_Float*)bpb)->body) {
+			self->bpb = ((LV2_Atom_Float*)bpb)->body;
+			reset(self);
+		}
+	}
+
 	if (bpm && bpm->type == uris->atom_Float) {
 		if (self->bpm != ((LV2_Atom_Float*)bpm)->body) {
 			// Tempo changed, update BPM
 			self->bpm = ((LV2_Atom_Float*)bpm)->body;
-			self->loop_beats = 4 * (uint32_t)floorf(*(self->ports.bars));
-			self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
-			self->loop_index = 0;
-			log("BPM: %G", self->bpm);
-			log("Loop_samples: %d", self->loop_samples);
-			for (int i = 0; i < NUM_LOOPS; i++) {
-				self->button_state[i] = (*self->ports.loops[i]) > 0.0f ? true : false;
-				self->state[i] = STATE_RECORDING;
-				self->phrase_start[i] = 0;
-				log("STATE: RECORDING (BPM change) [%d]", i);
-			}
+			reset(self);
 		}
 	}
 	if (speed && speed->type == uris->atom_Float) {
 		if (self->speed != ((LV2_Atom_Float*)speed)->body) {
 			// Speed changed, e.g. 0 (stop) to 1 (play)
 			// reset the loop start
-			self->loop_beats = 4 * (uint32_t)floorf(*(self->ports.bars));
-			self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
 			self->speed = ((LV2_Atom_Float*)speed)->body;
-			self->current_lb = 0;
-			self->loop_index = 0;
-			for (int i = 0; i < NUM_LOOPS; i++) {
-				self->button_state[i] = (*self->ports.loops[i]) > 0.0f ? true : false;
-				self->state[i] = STATE_RECORDING;
-				self->phrase_start[i] = 0;
-			}
+			reset(self);
 			log("Speed change: %G", self->speed);
 			log("Loop: [%d][%d]", self->loop_beats, self->loop_samples);
 		};
