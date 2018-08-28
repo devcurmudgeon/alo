@@ -255,6 +255,9 @@ reset(Alo* self)
 {
 	self->loop_beats = (uint32_t)floorf(self->bpb) * (uint32_t)floorf(*(self->ports.bars));
 	self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
+	if (self->loop_samples > STORAGE_MEMORY) {
+		self->loop_samples = STORAGE_MEMORY;
+	}
 	self->loop_index = 0;
 	log("Loop beats: %d", self->loop_beats);
 	log("BPM: %G", self->bpm);
