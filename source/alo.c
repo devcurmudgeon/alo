@@ -435,7 +435,7 @@ run(LV2_Handle instance, uint32_t n_samples)
 			}
 		}
 		self->loop_index += 1;
-		if (self->loop_index == self->loop_samples) {
+		if (self->loop_index >= self->loop_samples) {
 			self->loop_index = 0;
 		}
 	}
