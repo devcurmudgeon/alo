@@ -359,18 +359,18 @@ button_logic(LV2_Handle instance, bool new_button_state, int i)
 	self->button_state[i] = new_button_state;
 
 	int difference = milliseconds - self->button_time[i];
+	self->button_time[i] = milliseconds;
 	if (new_button_state == true) {
 		log("button ON for loop [%d]", i);
-		self->button_time[i] = milliseconds;
 	} else {
 		log("button OFF for loop [%d]", i);
-		if (difference < 1000) {
-			// double/triple press ending with off, user is resetting
-			// so back to recording mode
-			self->state[i] = STATE_RECORDING;
-			self->phrase_start[i] = 0;
-			log("STATE: RECORDING (button reset) [%d]", i);
-		}
+	}
+	if (difference < 1000) {
+		// double press, user is resetting
+		// so back to recording mode
+		self->state[i] = STATE_RECORDING;
+		self->phrase_start[i] = 0;
+		log("STATE: RECORDING (button reset) [%d]", i);
 	}
 }
 
