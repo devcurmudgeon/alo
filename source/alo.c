@@ -30,6 +30,7 @@
 #include "lv2/lv2plug.in/ns/ext/time/time.h"
 #include "lv2/lv2plug.in/ns/ext/urid/urid.h"
 #include "lv2/lv2plug.in/ns/lv2core/lv2.h"
+#include <lv2/lv2plug.in/ns/ext/midi/midi.h>
 
 #define ALO_URI "http://devcurmudgeon.com/alo"
 
@@ -37,6 +38,7 @@ typedef struct {
 	LV2_URID atom_Blank;
 	LV2_URID atom_Float;
 	LV2_URID atom_Object;
+	LV2_URID midi_MidiEvent;
 	LV2_URID atom_Path;
 	LV2_URID atom_Resource;
 	LV2_URID atom_Sequence;
@@ -59,6 +61,8 @@ typedef enum {
 	ALO_LOOP5 = 8,
 	ALO_LOOP6 = 9,
 	ALO_THRESHOLD = 10,
+	ALO_MIDIIN = 11,
+	ALO_MIDI_BASE = 12,
 } PortIndex;
 
 typedef enum {
@@ -70,7 +74,7 @@ typedef enum {
 
 static const size_t STORAGE_MEMORY = 2880000;
 static const int NUM_LOOPS = 6;
-static const bool LOG_ENABLED = false;
+static const bool LOG_ENABLED = true;
 
 void log(const char *message, ...)
 {
@@ -119,6 +123,8 @@ typedef struct {
 		LV2_Atom_Sequence* control;
 		float* threshold;
 		float* output;
+		float* midi_base;	// start note for midi control of loops
+		LV2_Atom_Sequence* midiin;	// midi input
 	} ports;
 
 	// Variables to keep track of the tempo information sent by the host
@@ -135,6 +141,7 @@ typedef struct {
 	State state[NUM_LOOPS];	   // we're recording, playing or not playing
 
 	bool button_state[NUM_LOOPS];
+	bool midi_control = false;
 	uint32_t  button_time[NUM_LOOPS]; // last time button was pressed
 
 	float* loops[NUM_LOOPS]; // pointers to memory for playing loops
@@ -203,6 +210,7 @@ instantiate(const LV2_Descriptor*     descriptor,
 	uris->time_beatsPerMinute = map->map(map->handle, LV2_TIME__beatsPerMinute);
 	uris->time_speed	  = map->map(map->handle, LV2_TIME__speed);
 	uris->time_beatsPerBar = map->map(map->handle, LV2_TIME__beatsPerBar);
+	uris->midi_MidiEvent   = map->map (map->handle, LV2_MIDI__MidiEvent);
 
 	return (LV2_Handle)self;
 }
@@ -242,6 +250,14 @@ connect_port(LV2_Handle instance,
 	case ALO_THRESHOLD:
 		self->ports.threshold = (float*)data;
 		log("Connect ALO_THRESHOLD %d %d", port);
+		break;
+	case ALO_MIDIIN:
+		self->ports.midiin = (LV2_Atom_Sequence*)data;
+		log("Connect ALO_MIDIIN %d %d", port);
+		break;
+	case ALO_MIDI_BASE:
+		self->ports.midi_base = (float*)data;
+		log("Connect ALO_MIDI_BASE %d %d", port);
 		break;
 	default:
 		int loop = port - 4;
@@ -356,6 +372,7 @@ button_logic(LV2_Handle instance, bool new_button_state, int i)
 	gettimeofday(&te, NULL); // get current time
 	long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
 
+	log("Button logic [%d]", i);
 	self->button_state[i] = new_button_state;
 
 	int difference = milliseconds - self->button_time[i];
@@ -390,12 +407,6 @@ run(LV2_Handle instance, uint32_t n_samples)
 	float* const recording = self->recording;
 	self->threshold = dbToFloat(*self->ports.threshold);
 
-	for (int i = 0; i < NUM_LOOPS; i++) {
-		bool new_button_state = (*self->ports.loops[i]) > 0.0f ? true : false;
-		if (new_button_state != self->button_state[i]) {
-			button_logic(self, new_button_state, i);
-		}
-	}
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
 		// recording always happens
 		sample = input[pos];
@@ -440,6 +451,37 @@ run(LV2_Handle instance, uint32_t n_samples)
 		}
 	}
 
+	const LV2_Atom_Sequence* midiin = self->ports.midiin;
+
+	for (const LV2_Atom_Event* ev = lv2_atom_sequence_begin(&midiin->body);
+		!lv2_atom_sequence_is_end(&midiin->body, midiin->atom.size, ev);
+
+		ev = lv2_atom_sequence_next(ev)) {
+
+		if (ev->body.type == self->uris.midi_MidiEvent) {
+			const uint8_t* const msg = (const uint8_t*)(ev + 1);
+			int i = msg[1] - (uint32_t)floorf(*(self->ports.midi_base));
+			if (i >= 0 && i < NUM_LOOPS) {
+				if (lv2_midi_message_type(msg) == LV2_MIDI_MSG_NOTE_ON) {
+					button_logic(self, true, i);
+				}
+				if (lv2_midi_message_type(msg) == LV2_MIDI_MSG_NOTE_OFF) {
+					button_logic(self, false, i);
+				}
+				self->midi_control = true;
+			}
+		}
+	}
+
+	if (self->midi_control == false) {
+		for (int i = 0; i < NUM_LOOPS; i++) {
+			bool new_button_state = (*self->ports.loops[i]) > 0.0f ? true : false;
+			if (new_button_state != self->button_state[i]) {
+				button_logic(self, new_button_state, i);
+			}
+		}
+	}
+
 	const AloURIs* uris = &self->uris;
 
 	// from metro.c
@@ -447,9 +489,9 @@ run(LV2_Handle instance, uint32_t n_samples)
 	const LV2_Atom_Sequence* in = self->ports.control;
 
 	for (const LV2_Atom_Event* ev = lv2_atom_sequence_begin(&in->body);
-	     !lv2_atom_sequence_is_end(&in->body, in->atom.size, ev);
+	    !lv2_atom_sequence_is_end(&in->body, in->atom.size, ev);
 
-	     ev = lv2_atom_sequence_next(ev)) {
+	    ev = lv2_atom_sequence_next(ev)) {
 
 		// Check if this event is an Object
 		// (or deprecated Blank to tolerate old hosts)
