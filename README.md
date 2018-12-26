@@ -8,18 +8,18 @@ The idea is to provide an easy, mistake-proof way to create and trigger live
 music loops in sync with a click track.
 
 - Each instance of ALO can record and play up to 6 loops. All loops are the
-  same length, set by the <Bars> parameter. If you want more loops, or different
-  loop lengths, add extra instances of Alo.
+  same length, set by the ```Bars``` parameter. If you want more loops, or
+  different loop lengths, add extra instances of Alo.
 
 - Each loop is recorded/played using a switch by default. Alternatively you
   can connect a MIDI device and use MIDI notes to control the loops.
 
-- The <MIDI Base> parameter sets the range of midi notes (from <MIDI Base> to
-  <MIDI Base + 5>) assigned to loops.
+- The ```MIDI Base``` parameter sets the range of midi notes (from
+  ```MIDI Base``` to ```MIDI Base + 5```) assigned to loops.
 
 - Each loop start point is triggered when the music you play at the input
-  crosses the <Threshold> parameter. Hit switch (or MIDI note) to arm a loop,
-  then start playing to begin recording.
+  crosses the ```Threshold``` parameter. Hit a switch (or a MIDI note) to arm
+  a loop, then start playing to begin recording.
 
 - Each loop is a single recording. To 'Overdub', just record another loop.
 
