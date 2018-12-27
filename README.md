@@ -63,22 +63,17 @@ _______/<<^^^^^^^^^^^^^^^^^^^\____________________________  audio in
   - if button is pressed twice within one beat, go back to 'recording' mode
 
 ## starting MOD docker build environment
+```
+docker run -ti --name mpb -p 9000:9000 -v ~/Projects/2018/moddevices/:/tmp/moddevices moddevices/mod-plugin-builder
+```
 
-docker run -ti --name mpb -p 9000:9000 -v ~/Projects/2018/moddevices/:/tmp/aloo-lv2 moddevices/mod-plugin-builder
+## build and deploy notes
 
-## build notes
-```
-cd /home/builder/mod-plugin-builder
-rm -fr  /home/builder/mod-plugin-builder/plugins/package/alo
-cp -r /tmp/moddevices/alo /home/builder/mod-plugin-builder/plugins/package
-rm -fr /home/builder/mod-workdir/plugins-dep/build/alo* && ./build alo
-```
-## deploy notes
+See ./cycle.sh
 
-```
-cd /home/builder/mod-workdir/plugins && tar cz alo.lv2 | base64 | curl -F 'package=@-' http://192.168.51.1/sdk/install
-```
 ## debug notes
+
+```
 
 edit the code to set `LOG_ENABLED = true`
 
