@@ -1,0 +1,52 @@
+@prefix modgui: <http://moddevices.com/ns/modgui#> .
+@prefix lv2:    <http://lv2plug.in/ns/lv2core#> .
+
+<http://devcurmudgeon.com/alo>
+    modgui:gui [
+        modgui:resourcesDirectory <modgui> ;
+        modgui:iconTemplate <modgui/icon-alo.html> ;
+        modgui:stylesheet <modgui/stylesheet-alo.css> ;
+        modgui:screenshot <modgui/screenshot-alo.png> ;
+        modgui:thumbnail <modgui/thumbnail-alo.png> ;
+        modgui:brand "devcurmudgeon" ;
+        modgui:label "ALO" ;
+        modgui:model "combo-model-001" ;
+        modgui:panel "0600" ;
+        modgui:port [
+            lv2:index 0 ;
+            lv2:symbol "loop1" ;
+            lv2:name "Loop1" ;
+        ] , [
+            lv2:index 1 ;
+            lv2:symbol "loop2" ;
+            lv2:name "Loop2" ;
+        ] , [
+            lv2:index 2 ;
+            lv2:symbol "loop3" ;
+            lv2:name "Loop3" ;
+        ] , [
+            lv2:index 3 ;
+            lv2:symbol "loop4" ;
+            lv2:name "Loop4" ;
+        ] , [
+            lv2:index 4 ;
+            lv2:symbol "loop5" ;
+            lv2:name "Loop5" ;
+        ] , [
+            lv2:index 5 ;
+            lv2:symbol "loop6" ;
+            lv2:name "Loop6" ;
+        ] , [
+            lv2:index 6 ;
+            lv2:symbol "midi_base" ;
+            lv2:name "MIDI Base" ;
+        ] , [
+            lv2:index 7 ;
+            lv2:symbol "threshold" ;
+            lv2:name "Threshold" ;
+        ] , [
+            lv2:index 8 ;
+            lv2:symbol "bars" ;
+            lv2:name "Bars" ;
+        ] ;
+    ] .
