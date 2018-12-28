@@ -35,8 +35,10 @@ clean:
 
 install: build
 	install -d $(DESTDIR)$(PREFIX)/lib/lv2/alo.lv2
+	install -d $(DESTDIR)$(PREFIX)/lib/lv2/alo.lv2/modgui
 
 	install -m 644 alo.lv2/*.so  $(DESTDIR)$(PREFIX)/lib/lv2/alo.lv2/
 	install -m 644 alo.lv2/*.ttl $(DESTDIR)$(PREFIX)/lib/lv2/alo.lv2/
+	install -m 644 alo.lv2/modgui/* $(DESTDIR)$(PREFIX)/lib/lv2/alo.lv2/modgui
 
 # --------------------------------------------------------------
