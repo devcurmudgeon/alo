@@ -1,5 +1,7 @@
 # A LOoper
 
+![screenshot](/source/alo.lv2/modgui/screenshot-alo.png)
+
 ALO is an LV2 plugin primarily targeted at the MOD Duo but hopefully it should
 work on other systems too. It's based on the amp.c and metro.c lv2 example
 plugins, plus some study of the loopor code.
