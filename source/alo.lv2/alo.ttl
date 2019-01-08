@@ -16,6 +16,28 @@ doap:name "ALO";
 doap:license <http://opensource.org/licenses/isc>;
 
 
+lv2:minorVersion 0;
+lv2:microVersion 1;
+
+rdfs:comment """
+
+ALO is a looper designed for live audio looping with sync.
+
+There are six loops.
+Each loop is [BARS] bars long.
+Recording starts when input audio hits [THRESHOLD].
+
+Press any loop button to:
+
+- arm for recording
+- stop playing, when the loop finishes
+- re-start playing, in sync
+
+Wipe the loop by pressing its button twice within a second.
+
+Optionally connect a midi device and control the loops by sending MIDI note on/off messages ([MIDI Base]..[MIDI Base + 5]).
+
+""";
 
 lv2:port
 [
