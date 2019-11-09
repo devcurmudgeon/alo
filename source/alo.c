@@ -327,7 +327,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 	}
 
 	if (bpm && bpm->type == uris->atom_Float) {
-		if (self->bpm != ((LV2_Atom_Float*)bpm)->body) {
+		if (round(self->bpm) != round(((LV2_Atom_Float*)bpm)->body)) {
 			// Tempo changed, update BPM
 			self->bpm = ((LV2_Atom_Float*)bpm)->body;
 			reset(self);
