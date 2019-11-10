@@ -63,6 +63,7 @@ typedef enum {
 	ALO_THRESHOLD = 10,
 	ALO_MIDIIN = 11,
 	ALO_MIDI_BASE = 12,
+	ALO_PER_BEAT_LOOPS = 13,
 } PortIndex;
 
 typedef enum {
@@ -124,6 +125,7 @@ typedef struct {
 		float* threshold;
 		float* output;
 		float* midi_base;	// start note for midi control of loops
+		float* pb_loops;		// number of loops in  per-beat mode
 		LV2_Atom_Sequence* midiin;	// midi input
 	} ports;
 
@@ -137,6 +139,8 @@ typedef struct {
 	uint32_t loop_samples;	// loop length in samples
 	uint32_t current_bb;	// which beat of the bar we are on (1, 2, 3, 0)
 	uint32_t current_lb;	// which beat of the loop we are on (1, 2, ...)
+
+	uint32_t pb_loops;	// number of loops in per-beat mode
 
 	State state[NUM_LOOPS];	   // we're recording, playing or not playing
 
@@ -259,6 +263,10 @@ connect_port(LV2_Handle instance,
 		self->ports.midi_base = (float*)data;
 		log("Connect ALO_MIDI_BASE %d %d", port);
 		break;
+	case ALO_PER_BEAT_LOOPS:
+		self->ports.pb_loops = (float*)data;
+		log("Connect ALO_PER_BEAT_LOOPS %d %d", port);
+		break;
 	default:
 		int loop = port - 4;
 		self->ports.loops[loop] = (float*)data;
@@ -269,6 +277,7 @@ connect_port(LV2_Handle instance,
 static void
 reset(Alo* self)
 {
+	self->pb_loops = (uint32_t)floorf(*(self->ports.pb_loops));
 	self->loop_beats = (uint32_t)floorf(self->bpb) * (uint32_t)floorf(*(self->ports.bars));
 	self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
 	if (self->loop_samples > STORAGE_MEMORY) {
@@ -418,14 +427,26 @@ run(LV2_Handle instance, uint32_t n_samples)
 			if (self->phrase_start[i] && self->phrase_start[i] == self->loop_index) {
 				if (self->button_state[i]) {
 					self->state[i] = STATE_LOOP_ON;
-					log("[%d]DECISION: LOOP ON [%d]", i, self->loop_index);
+					log("[%d]PHRASE: LOOP ON [%d]", i, self->loop_index);
 				} else {
 					if (self->state[i] == STATE_RECORDING) {
 						self->phrase_start[i] = 0;
-						log("[%d]DECISION: Abandon phrase [%d]", i, self->loop_index);
+						log("[%d]PHRASE: Abandon phrase [%d]", i, self->loop_index);
 					} else {
 						self->state[i] = STATE_LOOP_OFF;
-						log("[%d]DECISION: LOOP OFF [%d]", i, self->loop_index);
+						log("[%d]PHRASE: LOOP OFF [%d]", i, self->loop_index);
+					}
+				}
+			}
+
+			if (self->loop_index % (self->loop_samples / self->loop_beats) == 0) {
+				if (self->pb_loops > i && self->state[i] != STATE_RECORDING) {
+					if (self->button_state[i]) {
+						self->state[i] = STATE_LOOP_ON;
+						log("[%d]BEAT: LOOP ON [%d]", i, self->loop_index);
+					} else {
+						self->state[i] = STATE_LOOP_OFF;
+						log("[%d]BEAT: LOOP OFF [%d]", i, self->loop_index);
 					}
 				}
 			}
