@@ -64,6 +64,7 @@ typedef enum {
 	ALO_MIDIIN = 11,
 	ALO_MIDI_BASE = 12,
 	ALO_PER_BEAT_LOOPS = 13,
+	ALO_CLICK = 14,
 } PortIndex;
 
 typedef enum {
@@ -72,6 +73,13 @@ typedef enum {
 	STATE_LOOP_ON, // the loop is playing
 	STATE_LOOP_OFF // the loop is not playing
 } State;
+
+typedef enum {
+    STATE_OFF,      // No click
+    STATE_ATTACK,  // Envelope rising
+    STATE_DECAY,   // Envelope lowering
+    STATE_SILENT  // Silent
+} ClickState;
 
 static const size_t STORAGE_MEMORY = 2880000;
 static const int NUM_LOOPS = 6;
@@ -126,6 +134,7 @@ typedef struct {
 		float* output;
 		float* midi_base;	// start note for midi control of loops
 		float* pb_loops;		// number of loops in  per-beat mode
+		float* click;		// click mode on/off
 		LV2_Atom_Sequence* midiin;	// midi input
 	} ports;
 
@@ -153,6 +162,18 @@ typedef struct {
 	float* recording;    // pointer to memory for recording - for all loops
 	uint32_t loop_index; // index into loop for current play point
 
+	ClickState clickstate;
+
+	uint32_t elapsed_len;  // Frames since the start of the last click
+	uint32_t wave_offset;  // Current play offset in the wave
+
+	// One cycle of a sine wave
+	float*   wave;
+	uint32_t wave_len;
+
+	// Envelope parameters
+	uint32_t attack_len;
+	uint32_t decay_len;
 } Alo;
 
 /**
@@ -216,6 +237,15 @@ instantiate(const LV2_Descriptor*     descriptor,
 	uris->time_beatsPerBar = map->map(map->handle, LV2_TIME__beatsPerBar);
 	uris->midi_MidiEvent   = map->map (map->handle, LV2_MIDI__MidiEvent);
 
+	// Generate one cycle of a sine wave at the desired frequency
+	const double freq = 440.0 * 2.0;
+	const double amp  = 0.5;
+	self->wave_len = (uint32_t)(rate / freq);
+	self->wave     = (float*)malloc(self->wave_len * sizeof(float));
+	for (uint32_t i = 0; i < self->wave_len; ++i) {
+		self->wave[i] = (float)(sin(i * 2 * M_PI * freq / rate) * amp);
+	}
+
 	return (LV2_Handle)self;
 }
 
@@ -267,6 +297,10 @@ connect_port(LV2_Handle instance,
 		self->ports.pb_loops = (float*)data;
 		log("Connect ALO_PER_BEAT_LOOPS %d %d", port);
 		break;
+	case ALO_CLICK:
+		self->ports.click = (float*)data;
+		log("Connect ALO_CLICK %d %d", port);
+		break;
 	default:
 		int loop = port - 4;
 		self->ports.loops[loop] = (float*)data;
@@ -293,6 +327,13 @@ reset(Alo* self)
 		self->phrase_start[i] = 0;
 		log("STATE: RECORDING (reset) [%d]", i);
 	}
+
+    self->clickstate = STATE_OFF;
+    uint32_t click = (uint32_t)floorf(*(self->ports.click));
+
+    if (click != 0) {
+        self->clickstate = STATE_SILENT;
+    }
 }
 
 /**
@@ -401,6 +442,59 @@ button_logic(LV2_Handle instance, bool new_button_state, int i)
 }
 
 /**
+   ** Taken directly from metro.c **
+   Play back audio for the range [begin..end) relative to this cycle.  This is
+   called by run() in-between events to output audio up until the current time.
+*/
+static void
+click(Alo* self, uint32_t begin, uint32_t end)
+{
+	float* const   output          = self->ports.output;
+	const uint32_t frames_per_beat = 60.0f / self->bpm * self->rate;
+
+	if (self->speed == 0.0f) {
+		memset(output, 0, (end - begin) * sizeof(float));
+		return;
+	}
+
+	for (uint32_t i = begin; i < end; ++i) {
+		switch (self->clickstate) {
+		case STATE_ATTACK:
+			// Amplitude increases from 0..1 until attack_len
+			output[i] = self->wave[self->wave_offset] *
+				self->elapsed_len / (float)self->attack_len;
+			if (self->elapsed_len >= self->attack_len) {
+				self->clickstate = STATE_DECAY;
+			}
+			break;
+		case STATE_DECAY:
+			// Amplitude decreases from 1..0 until attack_len + decay_len
+			output[i] = 0.0f;
+			output[i] = self->wave[self->wave_offset] *
+				(1 - ((self->elapsed_len - self->attack_len) /
+				      (float)self->decay_len));
+			if (self->elapsed_len >= self->attack_len + self->decay_len) {
+				self->clickstate = STATE_SILENT;
+			}
+			break;
+		case STATE_SILENT:
+		case STATE_OFF:
+			output[i] = 0.0f;
+		}
+
+		// We continuously play the sine wave regardless of envelope
+		self->wave_offset = (self->wave_offset + 1) % self->wave_len;
+
+		// Update elapsed time and start attack if necessary
+		if (++self->elapsed_len == frames_per_beat) {
+			self->clickstate       = STATE_ATTACK;
+			self->elapsed_len = 0;
+		}
+	}
+}
+
+
+/**
    The `run()` method is the main process function of the plugin.  It processes
    a block of audio in the audio context.  Since this plugin is
    `lv2:hardRTCapable`, `run()` must be real-time safe, so blocking (e.g. with
@@ -416,6 +510,8 @@ run(LV2_Handle instance, uint32_t n_samples)
 	float* const recording = self->recording;
 	self->threshold = dbToFloat(*self->ports.threshold);
 
+	uint32_t last_t = 0;
+
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
 		// recording always happens
 		sample = input[pos];
@@ -428,6 +524,7 @@ run(LV2_Handle instance, uint32_t n_samples)
 				if (self->button_state[i]) {
 					self->state[i] = STATE_LOOP_ON;
 					log("[%d]PHRASE: LOOP ON [%d]", i, self->loop_index);
+                    self->clickstate = STATE_OFF;
 				} else {
 					if (self->state[i] == STATE_RECORDING) {
 						self->phrase_start[i] = 0;
@@ -479,6 +576,15 @@ run(LV2_Handle instance, uint32_t n_samples)
 
 		ev = lv2_atom_sequence_next(ev)) {
 
+    	// Play the click for the time slice from last_t until now
+		if (self->clickstate != STATE_OFF) {
+			if (self->clickstate != STATE_SILENT) {
+				click(self, last_t, ev->time.frames);
+		}
+		    // Update time for next iteration and move to next event
+		    last_t = ev->time.frames;
+        }
+
 		if (ev->body.type == self->uris.midi_MidiEvent) {
 			const uint8_t* const msg = (const uint8_t*)(ev + 1);
 			int i = msg[1] - (uint32_t)floorf(*(self->ports.midi_base));
@@ -493,6 +599,11 @@ run(LV2_Handle instance, uint32_t n_samples)
 			}
 		}
 	}
+
+	if (self->clickstate != STATE_OFF) {
+        // Play for remainder of cycle
+	    click(self, last_t, n_samples);
+    }
 
 	if (self->midi_control == false) {
 		for (int i = 0; i < NUM_LOOPS; i++) {
