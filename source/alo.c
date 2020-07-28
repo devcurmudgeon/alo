@@ -194,13 +194,11 @@ sine_pulse(float* target, double frequency, double sample_rate, uint32_t num_sam
 	
 	for (uint32_t i = 0; i < half_length; ++i) {
 		amplitude = fmin(amplitude + amplitude_step, 1.0f);
-		printf("%f\n", amplitude);
 		target[i] = 0.5f * amplitude * sin(i * sample_sin_step);
 	} 
 
 	for (uint32_t i = half_length; i < num_samples; ++i) {
 		amplitude = fmax(amplitude - amplitude_step, 0.0f);
-		printf("%f\n", amplitude);
 		target[i] = 0.5f * amplitude * sin(i * sample_sin_step);
 	} 
 }
@@ -362,13 +360,6 @@ reset(Alo* self)
 		self->phrase_start[i] = 0;
 		log("STATE: RECORDING (reset) [%d]", i);
 	}
-
-    self->clickstate = STATE_OFF;
-    uint32_t click = (uint32_t)floorf(*(self->ports.click));
-
-    if (click != 0) {
-        self->clickstate = STATE_SILENT;
-    }
 }
 
 /**
@@ -611,12 +602,12 @@ run(LV2_Handle instance, uint32_t n_samples)
 	self->current_position = fmodf(self->current_position, self->bpb);
 	const float new_beat = floorf(self->current_position);
 
-	if (self->clickstate != STATE_OFF) {
+	if (*self->ports.click && self->speed) {
 		if (new_beat != previous_beat) {
 			const uint32_t sample_offset =
 				(uint32_t)((self->current_position - new_beat) * self->rate);
 
-			click(self, self->ports.output, 0, sample_offset);
+			click(self, 0, sample_offset);
 
 			if (new_beat == 0.0f) {
 				self->high_beat_offset = 0;
@@ -624,10 +615,10 @@ run(LV2_Handle instance, uint32_t n_samples)
 				self->low_beat_offset = 0;
 			}
 
-			click(self, self->ports.output, sample_offset, n_samples);
+			click(self, sample_offset, n_samples);
 		}
 		else {
-			click(self, self->ports.output, 0, n_samples);
+			click(self, 0, n_samples);
 		}
 	}
 
