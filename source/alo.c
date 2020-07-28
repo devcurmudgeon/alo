@@ -154,7 +154,7 @@ typedef struct {
 	State state[NUM_LOOPS];	   // we're recording, playing or not playing
 
 	bool button_state[NUM_LOOPS];
-	bool midi_control = false;
+	bool midi_control;
 	uint32_t  button_time[NUM_LOOPS]; // last time button was pressed
 
 	float* loops[NUM_LOOPS]; // pointers to memory for playing loops
@@ -198,6 +198,8 @@ instantiate(const LV2_Descriptor*     descriptor,
 	self->loop_beats = 0;
 	self->current_bb = 0;
 	self->current_lb = 0;
+	
+	self->midi_control = false;
 
 	self->recording = (float *)calloc(STORAGE_MEMORY, sizeof(float));
 
