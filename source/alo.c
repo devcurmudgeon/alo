@@ -90,6 +90,9 @@ static const bool LOG_ENABLED = false;
 #define DEFAULT_BPM 120
 #define DEFAULT_PER_BEAT_LOOPS 0
 
+#define HIGH_BEAT_FREQ 880
+#define LOW_BEAT_FREQ 440
+
 void log(const char *message, ...)
 {
 	if (!LOG_ENABLED) {
@@ -153,6 +156,7 @@ typedef struct {
 	uint32_t loop_samples;	// loop length in samples
 	uint32_t current_bb;	// which beat of the bar we are on (1, 2, 3, 0)
 	uint32_t current_lb;	// which beat of the loop we are on (1, 2, ...)
+	float current_position;
 
 	uint32_t pb_loops;	// number of loops in per-beat mode
 
@@ -172,14 +176,32 @@ typedef struct {
 	uint32_t elapsed_len;  // Frames since the start of the last click
 	uint32_t wave_offset;  // Current play offset in the wave
 
-	// One cycle of a sine wave
-	float*   wave;
-	uint32_t wave_len;
-
-	// Envelope parameters
-	uint32_t attack_len;
-	uint32_t decay_len;
+	// Click beats
+	float*   high_beat;
+	float*   low_beat;
+	uint32_t beat_len;
+	uint32_t high_beat_offset;
+	uint32_t low_beat_offset;
 } Alo;
+
+void
+sine_pulse(float* target, double frequency, double sample_rate, uint32_t num_samples)
+{
+	const uint32_t half_length = (uint32_t)(num_samples * 0.5f);
+	const float amplitude_step = 1.0f / (float)half_length;
+	const double sample_sin_step = 2 * M_PI * frequency / sample_rate;
+	float amplitude = 0.0f;
+	
+	for (uint32_t i = 0; i < half_length; ++i) {
+		amplitude = fmin(amplitude + amplitude_step, 1.0f);
+		target[i] = 0.5f * amplitude * sin(i * sample_sin_step);
+	} 
+
+	for (uint32_t i = half_length; i < num_samples; ++i) {
+		amplitude = fmax(amplitude - amplitude_step, 0.0f);
+		target[i] = 0.5f * amplitude * sin(i * sample_sin_step);
+	} 
+}
 
 /**
    The `instantiate()` function is called by the host to create a new plugin
@@ -205,6 +227,7 @@ instantiate(const LV2_Descriptor*     descriptor,
 	self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
 	self->current_bb = 0;
 	self->current_lb = 0;
+	self->current_position = 0.0f;
 	self->pb_loops = DEFAULT_PER_BEAT_LOOPS;
 	
 	self->midi_control = false;
@@ -247,14 +270,14 @@ instantiate(const LV2_Descriptor*     descriptor,
 	uris->time_beatsPerBar = map->map(map->handle, LV2_TIME__beatsPerBar);
 	uris->midi_MidiEvent   = map->map (map->handle, LV2_MIDI__MidiEvent);
 
-	// Generate one cycle of a sine wave at the desired frequency
-	const double freq = 440.0 * 2.0;
-	const double amp  = 0.5;
-	self->wave_len = (uint32_t)(rate / freq);
-	self->wave     = (float*)malloc(self->wave_len * sizeof(float));
-	for (uint32_t i = 0; i < self->wave_len; ++i) {
-		self->wave[i] = (float)(sin(i * 2 * M_PI * freq / rate) * amp);
-	}
+	// Generate pulses for the metronome
+	self->beat_len = (uint32_t)(0.02f * self->rate);
+	self->high_beat = (float*)malloc(self->beat_len * sizeof(float));
+	self->low_beat = (float*)malloc(self->beat_len * sizeof(float));
+	sine_pulse(self->high_beat, HIGH_BEAT_FREQ, self->rate, self->beat_len);
+	sine_pulse(self->low_beat, LOW_BEAT_FREQ, self->rate, self->beat_len);
+	self->high_beat_offset = self->beat_len;
+	self->low_beat_offset = self->beat_len;
 
 	return (LV2_Handle)self;
 }
@@ -337,13 +360,6 @@ reset(Alo* self)
 		self->phrase_start[i] = 0;
 		log("STATE: RECORDING (reset) [%d]", i);
 	}
-
-    self->clickstate = STATE_OFF;
-    uint32_t click = (uint32_t)floorf(*(self->ports.click));
-
-    if (click != 0) {
-        self->clickstate = STATE_SILENT;
-    }
 }
 
 /**
@@ -406,15 +422,15 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 	if (beat && beat->type == uris->atom_Float) {
 		// Received a beat position, synchronise
 //		const float frames_per_beat = 60.0f / self->bpm * self->rate;
-		const float bar_beat = ((LV2_Atom_Float*)beat)->body;
+		self->current_position = ((LV2_Atom_Float*)beat)->body;
 //		const float beat_beats	    = bar_beats - floorf(bar_beats);
-		if (self->current_bb != (uint32_t)bar_beat) {
+		if (self->current_bb != (uint32_t)self->current_position) {
 			// we are onto the next beat
-			self->current_bb = (uint32_t)bar_beat;
+			self->current_bb = (uint32_t)self->current_position;
 			if (self->current_lb == self->loop_beats) {
 				self->current_lb = 0;
 			}
-			log("Beat:[%d][%d] index[%d] beat[%G]", self->current_bb, self->current_lb, self->loop_index, bar_beat);
+			log("Beat:[%d][%d] index[%d] beat[%G]\n", self->current_bb, self->current_lb, self->loop_index, self->current_position);
 			self->current_lb += 1;
 		}
 	}
@@ -460,45 +476,16 @@ static void
 click(Alo* self, uint32_t begin, uint32_t end)
 {
 	float* const   output          = self->ports.output;
-	const uint32_t frames_per_beat = 60.0f / self->bpm * self->rate;
 
-	if (self->speed == 0.0f) {
-		memset(output, 0, (end - begin) * sizeof(float));
-		return;
-	}
-
-	for (uint32_t i = begin; i < end; ++i) {
-		switch (self->clickstate) {
-		case STATE_ATTACK:
-			// Amplitude increases from 0..1 until attack_len
-			output[i] = self->wave[self->wave_offset] *
-				self->elapsed_len / (float)self->attack_len;
-			if (self->elapsed_len >= self->attack_len) {
-				self->clickstate = STATE_DECAY;
-			}
-			break;
-		case STATE_DECAY:
-			// Amplitude decreases from 1..0 until attack_len + decay_len
-			output[i] = 0.0f;
-			output[i] = self->wave[self->wave_offset] *
-				(1 - ((self->elapsed_len - self->attack_len) /
-				      (float)self->decay_len));
-			if (self->elapsed_len >= self->attack_len + self->decay_len) {
-				self->clickstate = STATE_SILENT;
-			}
-			break;
-		case STATE_SILENT:
-		case STATE_OFF:
-			output[i] = 0.0f;
+	for (uint32_t idx = begin; idx < end; idx++) {
+		if (self->high_beat_offset < self->beat_len) {
+			output[idx] += self->high_beat[self->high_beat_offset];
+			self->high_beat_offset++;
 		}
 
-		// We continuously play the sine wave regardless of envelope
-		self->wave_offset = (self->wave_offset + 1) % self->wave_len;
-
-		// Update elapsed time and start attack if necessary
-		if (++self->elapsed_len == frames_per_beat) {
-			self->clickstate       = STATE_ATTACK;
-			self->elapsed_len = 0;
+		if (self->low_beat_offset < self->beat_len) {
+			output[idx] += self->low_beat[self->low_beat_offset];
+			self->low_beat_offset++;
 		}
 	}
 }
@@ -589,7 +576,7 @@ run(LV2_Handle instance, uint32_t n_samples)
     	// Play the click for the time slice from last_t until now
 		if (self->clickstate != STATE_OFF) {
 			if (self->clickstate != STATE_SILENT) {
-				click(self, last_t, ev->time.frames);
+				// click(self, last_t, ev->time.frames);
 		}
 		    // Update time for next iteration and move to next event
 		    last_t = ev->time.frames;
@@ -610,10 +597,30 @@ run(LV2_Handle instance, uint32_t n_samples)
 		}
 	}
 
-	if (self->clickstate != STATE_OFF) {
-        // Play for remainder of cycle
-	    click(self, last_t, n_samples);
-    }
+	const float previous_beat = floorf(self->current_position);
+	self->current_position += n_samples / self->rate / 60.0f * self->bpm;
+	self->current_position = fmodf(self->current_position, self->bpb);
+	const float new_beat = floorf(self->current_position);
+
+	if (*self->ports.click && self->speed) {
+		if (new_beat != previous_beat) {
+			const uint32_t sample_offset =
+				(uint32_t)((self->current_position - new_beat) * self->rate);
+
+			click(self, 0, sample_offset);
+
+			if (new_beat == 0.0f) {
+				self->high_beat_offset = 0;
+			} else {
+				self->low_beat_offset = 0;
+			}
+
+			click(self, sample_offset, n_samples);
+		}
+		else {
+			click(self, 0, n_samples);
+		}
+	}
 
 	if (self->midi_control == false) {
 		for (int i = 0; i < NUM_LOOPS; i++) {
@@ -679,7 +686,8 @@ cleanup(LV2_Handle instance)
 	for (int i = 0; i < NUM_LOOPS; i++) {
 		free(self->loops[i]);
 	}
-	free(self->wave);
+	free(self->low_beat);
+	free(self->high_beat);
 	free(self->recording);
 	free(self);
 }
