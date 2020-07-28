@@ -85,6 +85,11 @@ static const size_t STORAGE_MEMORY = 2880000;
 static const int NUM_LOOPS = 6;
 static const bool LOG_ENABLED = false;
 
+#define DEFAULT_BEATS_PER_BAR 4
+#define DEFAULT_NUM_BARS 4
+#define DEFAULT_BPM 120
+#define DEFAULT_PER_BEAT_LOOPS 0
+
 void log(const char *message, ...)
 {
 	if (!LOG_ENABLED) {
@@ -194,10 +199,13 @@ instantiate(const LV2_Descriptor*     descriptor,
 {
 	Alo* self = (Alo*)calloc(1, sizeof(Alo));
 	self->rate = rate;
-	self->bpb = 4;
-	self->loop_beats = 0;
+	self->bpb = DEFAULT_BEATS_PER_BAR;
+	self->loop_beats = DEFAULT_BEATS_PER_BAR * DEFAULT_NUM_BARS;
+	self->bpm = DEFAULT_BPM;
+	self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
 	self->current_bb = 0;
 	self->current_lb = 0;
+	self->pb_loops = DEFAULT_PER_BEAT_LOOPS;
 	
 	self->midi_control = false;
 
