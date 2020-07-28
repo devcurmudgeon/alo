@@ -507,15 +507,13 @@ run(LV2_Handle instance, uint32_t n_samples)
 	float* const recording = self->recording;
 	self->threshold = dbToFloat(*self->ports.threshold);
 
-	uint32_t last_t = 0;
-
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
 		// recording always happens
 		sample = input[pos];
 		output[pos] = 0;
 //		log("Sample: %.9f", sample);
 		recording[self->loop_index] = sample;
-		for (int i = 0; i < NUM_LOOPS; i++) {
+		for (uint32_t i = 0; i < NUM_LOOPS; i++) {
 
 			if (self->phrase_start[i] && self->phrase_start[i] == self->loop_index) {
 				if (self->button_state[i]) {
@@ -572,15 +570,6 @@ run(LV2_Handle instance, uint32_t n_samples)
 		!lv2_atom_sequence_is_end(&midiin->body, midiin->atom.size, ev);
 
 		ev = lv2_atom_sequence_next(ev)) {
-
-    	// Play the click for the time slice from last_t until now
-		if (self->clickstate != STATE_OFF) {
-			if (self->clickstate != STATE_SILENT) {
-				// click(self, last_t, ev->time.frames);
-		}
-		    // Update time for next iteration and move to next event
-		    last_t = ev->time.frames;
-        }
 
 		if (ev->body.type == self->uris.midi_MidiEvent) {
 			const uint8_t* const msg = (const uint8_t*)(ev + 1);
