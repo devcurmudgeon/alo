@@ -679,6 +679,7 @@ cleanup(LV2_Handle instance)
 	for (int i = 0; i < NUM_LOOPS; i++) {
 		free(self->loops[i]);
 	}
+	free(self->wave);
 	free(self->recording);
 	free(self);
 }
