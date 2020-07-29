@@ -573,7 +573,6 @@ update_level(Alo* self, uint32_t n_samples)
 	output_db = fmax(LEVEL_MIN, output_db);
 	output_db = fmin(LEVEL_MAX, output_db);
 
-	printf("Level %f dB\n", output_db);
 	*level_output = output_db;
 }
 
@@ -591,7 +590,6 @@ run(LV2_Handle instance, uint32_t n_samples)
 	float sample = 0.0;
 	float* const output = self->ports.output;
 	float* const recording = self->recording;
-	self->threshold = dbToFloat(*self->ports.threshold);
 
 	update_level(self, n_samples);
 
@@ -635,7 +633,7 @@ run(LV2_Handle instance, uint32_t n_samples)
 			if (self->state[i] == STATE_RECORDING && self->button_state[i]) {
 				loop[self->loop_index] = sample;
 				if (self->phrase_start[i] == 0 && self->speed != 0) {
-					if (fabs(sample) > self->threshold) {
+					if (*self->ports.level > *self->ports.threshold) {
 						self->phrase_start[i] = self->loop_index;
 						log("[%d]>>> DETECTED PHRASE START [%d]<<<", i, self->loop_index);
 					}
