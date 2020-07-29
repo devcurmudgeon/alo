@@ -505,6 +505,7 @@ run(LV2_Handle instance, uint32_t n_samples)
 	float sample = 0.0;
 	float* const output = self->ports.output;
 	float* const recording = self->recording;
+	bool play_click = true;
 	self->threshold = dbToFloat(*self->ports.threshold);
 
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
@@ -519,7 +520,6 @@ run(LV2_Handle instance, uint32_t n_samples)
 				if (self->button_state[i]) {
 					self->state[i] = STATE_LOOP_ON;
 					log("[%d]PHRASE: LOOP ON [%d]", i, self->loop_index);
-                    self->clickstate = STATE_OFF;
 				} else {
 					if (self->state[i] == STATE_RECORDING) {
 						self->phrase_start[i] = 0;
@@ -591,7 +591,14 @@ run(LV2_Handle instance, uint32_t n_samples)
 	self->current_position = fmodf(self->current_position, self->bpb);
 	const float new_beat = floorf(self->current_position);
 
-	if (*self->ports.click && self->speed) {
+	
+	for (uint32_t i = 0; i < NUM_LOOPS; i++) {
+		if (self->state[i] == STATE_LOOP_ON) {
+			play_click = false;
+		}
+	}
+
+	if (play_click && *self->ports.click && self->speed) {
 		if (new_beat != previous_beat) {
 			const uint32_t sample_offset =
 				(uint32_t)((self->current_position - new_beat) * self->rate);
