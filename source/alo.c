@@ -65,6 +65,7 @@ typedef enum {
 	ALO_MIDI_BASE = 12,
 	ALO_PER_BEAT_LOOPS = 13,
 	ALO_CLICK = 14,
+	ALO_LEVEL = 15,
 } PortIndex;
 
 typedef enum {
@@ -92,6 +93,12 @@ static const bool LOG_ENABLED = false;
 
 #define HIGH_BEAT_FREQ 880
 #define LOW_BEAT_FREQ 440
+
+#define LEVEL_TAU 0.1f
+#define LEVEL_MIN -90
+#define LEVEL_MAX 24
+
+
 
 void log(const char *message, ...)
 {
@@ -122,6 +129,53 @@ static float dbToFloat(float db)
     return powf(10.0f, db * 0.05f);
 }
 
+///
+/// Convert an input floating point power to a dB value (pow2db)
+///
+static float pow2db(float power)
+{
+    return 10 * log10f(power);
+}
+
+///
+/// Convert an input floating point power to a dB value (pow2db)
+///
+static float db2pow(float db)
+{
+    return powf(10.0f, db * 0.1f);
+}
+
+static const float level_min = db2pow(LEVEL_MIN);
+
+/**
+ * One-pole filter helper structure.
+ * To reset the filter, put the state to 0.
+ * To set the gain at a specific value of the time constant tau, use
+ * gain = tan( 1 / (2 * tau * samplerate) ).
+ * 
+ */
+typedef struct {
+	float state;
+	float gain;
+} one_pole_filter_t;
+
+/**
+ * @brief One tick of the one pole filter lowpass output
+ * 
+ * @param filter 
+ * @param input 
+ * @return float 
+ */
+static float
+one_pole_lowpass(one_pole_filter_t* filter, float input)
+{
+	const float intermediate = filter->gain * (input - filter->state);
+	const float output = intermediate + filter->state;
+	filter->state = output + intermediate;
+	return output;
+}
+
+
 /**
    Every plugin defines a private structure for the plugin instance.  All data
    associated with a plugin instance is stored here, and is available to
@@ -143,6 +197,7 @@ typedef struct {
 		float* midi_base;	// start note for midi control of loops
 		float* pb_loops;		// number of loops in  per-beat mode
 		float* click;		// click mode on/off
+		float* level;		// input level
 		LV2_Atom_Sequence* midiin;	// midi input
 	} ports;
 
@@ -182,6 +237,9 @@ typedef struct {
 	uint32_t beat_len;
 	uint32_t high_beat_offset;
 	uint32_t low_beat_offset;
+
+	// Level filter
+	one_pole_filter_t level_filter;
 } Alo;
 
 void
@@ -279,6 +337,12 @@ instantiate(const LV2_Descriptor*     descriptor,
 	self->high_beat_offset = self->beat_len;
 	self->low_beat_offset = self->beat_len;
 
+	// Initialize the level filter
+	self->level_filter = {
+		.state = 0.0f,
+		.gain = tanf(0.5f / (self->rate * LEVEL_TAU))
+	};
+
 	return (LV2_Handle)self;
 }
 
@@ -333,6 +397,10 @@ connect_port(LV2_Handle instance,
 	case ALO_CLICK:
 		self->ports.click = (float*)data;
 		log("Connect ALO_CLICK %d %d", port);
+		break;
+	case ALO_LEVEL:
+		self->ports.level = (float*)data;
+		log("Connect ALO_LEVEL %d %d", port);
 		break;
 	default:
 		int loop = port - 4;
@@ -490,6 +558,24 @@ click(Alo* self, uint32_t begin, uint32_t end)
 	}
 }
 
+static void
+update_level(Alo* self, uint32_t n_samples)
+{
+	const float* const input  = self->ports.input;
+	float* const level_output  = self->ports.level;
+
+	float output = level_min;
+	for (unsigned i = 0; i < n_samples; ++i) {
+		output = one_pole_lowpass(&self->level_filter, input[i] * input[i]);
+	}
+
+	float output_db = pow2db(output);
+	output_db = fmax(LEVEL_MIN, output_db);
+	output_db = fmin(LEVEL_MAX, output_db);
+
+	printf("Level %f dB\n", output_db);
+	*level_output = output_db;
+}
 
 /**
    The `run()` method is the main process function of the plugin.  It processes
@@ -506,6 +592,8 @@ run(LV2_Handle instance, uint32_t n_samples)
 	float* const output = self->ports.output;
 	float* const recording = self->recording;
 	self->threshold = dbToFloat(*self->ports.threshold);
+
+	update_level(self, n_samples);
 
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
 		// recording always happens
