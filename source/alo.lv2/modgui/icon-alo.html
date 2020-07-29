@@ -45,10 +45,10 @@
                 <div class="mod-knob-image" mod-role="input-control-port" mod-port-symbol="midi_base"></div>
             </div>
         </div>
-        <div class="mod-knob">
+        <div class="midi-base">
             <div class="mod-knob-image-wrapper">
-                <div class="mod-knob-title">{{name}}</div>
-                <div class="mod-knob-value" mod-role="input-control-value" mod-port-symbol="midi_base">60.000</div>
+                <div class="knob-title">{{name}}</div>
+                <div class="knob-value" mod-role="input-control-value" mod-port-symbol="midi_base">60.000</div>
             </div>
         </div>
         {{/controls.6}}
@@ -59,9 +59,10 @@
                 <div class="mod-knob-image" mod-role="input-control-port" mod-port-symbol="threshold"></div>
             </div>
         </div>
-        <div class="mod-knob">
-                <div class="mod-knob-title">{{name}}</div>
-                <div class="mod-knob-value" mod-role="input-control-value" mod-port-symbol="threshold">40.000</div>
+        <div class="threshold">
+                <span class="knob-title">{{name}}</span>
+                <span class="knob-value" mod-role="input-control-value" mod-port-symbol="threshold">40.000</span>
+                <span class="knob-title">Input level</span><span class="knob-value" mod-role="level">-90.000</span>
         </div>
         {{/controls.7}}
         <div class="mod-separator"></div>
@@ -71,9 +72,9 @@
                 <div class="mod-knob-image" mod-role="input-control-port" mod-port-symbol="bars"></div>
             </div>
         </div>
-        <div class="mod-knob">
-                <div class="mod-knob-title">{{name}}</div>
-                <div class="mod-knob-value" mod-role="input-control-value" mod-port-symbol="bars">2.000</div>
+        <div class="bars">
+                <div class="knob-title">{{name}}</div>
+                <div class="knob-value" mod-role="input-control-value" mod-port-symbol="bars">2.000</div>
          </div>
         {{/controls.8}}
         <div class="mod-separator"></div>
