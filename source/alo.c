@@ -65,6 +65,7 @@ typedef enum {
 	ALO_MIDI_BASE = 12,
 	ALO_PER_BEAT_LOOPS = 13,
 	ALO_CLICK = 14,
+	ALO_LEVEL = 15,
 } PortIndex;
 
 typedef enum {
@@ -84,6 +85,20 @@ typedef enum {
 static const size_t STORAGE_MEMORY = 2880000;
 static const int NUM_LOOPS = 6;
 static const bool LOG_ENABLED = false;
+
+#define DEFAULT_BEATS_PER_BAR 4
+#define DEFAULT_NUM_BARS 4
+#define DEFAULT_BPM 120
+#define DEFAULT_PER_BEAT_LOOPS 0
+
+#define HIGH_BEAT_FREQ 880
+#define LOW_BEAT_FREQ 440
+
+#define LEVEL_TAU 0.1f
+#define LEVEL_MIN -90
+#define LEVEL_MAX 24
+
+
 
 void log(const char *message, ...)
 {
@@ -114,6 +129,53 @@ static float dbToFloat(float db)
     return powf(10.0f, db * 0.05f);
 }
 
+///
+/// Convert an input floating point power to a dB value (pow2db)
+///
+static float pow2db(float power)
+{
+    return 10 * log10f(power);
+}
+
+///
+/// Convert an input floating point power to a dB value (pow2db)
+///
+static float db2pow(float db)
+{
+    return powf(10.0f, db * 0.1f);
+}
+
+static const float level_min = db2pow(LEVEL_MIN);
+
+/**
+ * One-pole filter helper structure.
+ * To reset the filter, put the state to 0.
+ * To set the gain at a specific value of the time constant tau, use
+ * gain = tan( 1 / (2 * tau * samplerate) ).
+ * 
+ */
+typedef struct {
+	float state;
+	float gain;
+} one_pole_filter_t;
+
+/**
+ * @brief One tick of the one pole filter lowpass output
+ * 
+ * @param filter 
+ * @param input 
+ * @return float 
+ */
+static float
+one_pole_lowpass(one_pole_filter_t* filter, float input)
+{
+	const float intermediate = filter->gain * (input - filter->state);
+	const float output = intermediate + filter->state;
+	filter->state = output + intermediate;
+	return output;
+}
+
+
 /**
    Every plugin defines a private structure for the plugin instance.  All data
    associated with a plugin instance is stored here, and is available to
@@ -135,6 +197,7 @@ typedef struct {
 		float* midi_base;	// start note for midi control of loops
 		float* pb_loops;		// number of loops in  per-beat mode
 		float* click;		// click mode on/off
+		float* level;		// input level
 		LV2_Atom_Sequence* midiin;	// midi input
 	} ports;
 
@@ -148,13 +211,14 @@ typedef struct {
 	uint32_t loop_samples;	// loop length in samples
 	uint32_t current_bb;	// which beat of the bar we are on (1, 2, 3, 0)
 	uint32_t current_lb;	// which beat of the loop we are on (1, 2, ...)
+	float current_position;
 
 	uint32_t pb_loops;	// number of loops in per-beat mode
 
 	State state[NUM_LOOPS];	   // we're recording, playing or not playing
 
 	bool button_state[NUM_LOOPS];
-	bool midi_control = false;
+	bool midi_control;
 	uint32_t  button_time[NUM_LOOPS]; // last time button was pressed
 
 	float* loops[NUM_LOOPS]; // pointers to memory for playing loops
@@ -167,14 +231,35 @@ typedef struct {
 	uint32_t elapsed_len;  // Frames since the start of the last click
 	uint32_t wave_offset;  // Current play offset in the wave
 
-	// One cycle of a sine wave
-	float*   wave;
-	uint32_t wave_len;
+	// Click beats
+	float*   high_beat;
+	float*   low_beat;
+	uint32_t beat_len;
+	uint32_t high_beat_offset;
+	uint32_t low_beat_offset;
 
-	// Envelope parameters
-	uint32_t attack_len;
-	uint32_t decay_len;
+	// Level filter
+	one_pole_filter_t level_filter;
 } Alo;
+
+void
+sine_pulse(float* target, double frequency, double sample_rate, uint32_t num_samples)
+{
+	const uint32_t half_length = (uint32_t)(num_samples * 0.5f);
+	const float amplitude_step = 1.0f / (float)half_length;
+	const double sample_sin_step = 2 * M_PI * frequency / sample_rate;
+	float amplitude = 0.0f;
+	
+	for (uint32_t i = 0; i < half_length; ++i) {
+		amplitude = fmin(amplitude + amplitude_step, 1.0f);
+		target[i] = 0.5f * amplitude * sin(i * sample_sin_step);
+	} 
+
+	for (uint32_t i = half_length; i < num_samples; ++i) {
+		amplitude = fmax(amplitude - amplitude_step, 0.0f);
+		target[i] = 0.5f * amplitude * sin(i * sample_sin_step);
+	} 
+}
 
 /**
    The `instantiate()` function is called by the host to create a new plugin
@@ -194,10 +279,16 @@ instantiate(const LV2_Descriptor*     descriptor,
 {
 	Alo* self = (Alo*)calloc(1, sizeof(Alo));
 	self->rate = rate;
-	self->bpb = 4;
-	self->loop_beats = 0;
+	self->bpb = DEFAULT_BEATS_PER_BAR;
+	self->loop_beats = DEFAULT_BEATS_PER_BAR * DEFAULT_NUM_BARS;
+	self->bpm = DEFAULT_BPM;
+	self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
 	self->current_bb = 0;
 	self->current_lb = 0;
+	self->current_position = 0.0f;
+	self->pb_loops = DEFAULT_PER_BEAT_LOOPS;
+	
+	self->midi_control = false;
 
 	self->recording = (float *)calloc(STORAGE_MEMORY, sizeof(float));
 
@@ -237,14 +328,20 @@ instantiate(const LV2_Descriptor*     descriptor,
 	uris->time_beatsPerBar = map->map(map->handle, LV2_TIME__beatsPerBar);
 	uris->midi_MidiEvent   = map->map (map->handle, LV2_MIDI__MidiEvent);
 
-	// Generate one cycle of a sine wave at the desired frequency
-	const double freq = 440.0 * 2.0;
-	const double amp  = 0.5;
-	self->wave_len = (uint32_t)(rate / freq);
-	self->wave     = (float*)malloc(self->wave_len * sizeof(float));
-	for (uint32_t i = 0; i < self->wave_len; ++i) {
-		self->wave[i] = (float)(sin(i * 2 * M_PI * freq / rate) * amp);
-	}
+	// Generate pulses for the metronome
+	self->beat_len = (uint32_t)(0.02f * self->rate);
+	self->high_beat = (float*)malloc(self->beat_len * sizeof(float));
+	self->low_beat = (float*)malloc(self->beat_len * sizeof(float));
+	sine_pulse(self->high_beat, HIGH_BEAT_FREQ, self->rate, self->beat_len);
+	sine_pulse(self->low_beat, LOW_BEAT_FREQ, self->rate, self->beat_len);
+	self->high_beat_offset = self->beat_len;
+	self->low_beat_offset = self->beat_len;
+
+	// Initialize the level filter
+	self->level_filter = {
+		.state = 0.0f,
+		.gain = tanf(0.5f / (self->rate * LEVEL_TAU))
+	};
 
 	return (LV2_Handle)self;
 }
@@ -301,6 +398,10 @@ connect_port(LV2_Handle instance,
 		self->ports.click = (float*)data;
 		log("Connect ALO_CLICK %d %d", port);
 		break;
+	case ALO_LEVEL:
+		self->ports.level = (float*)data;
+		log("Connect ALO_LEVEL %d %d", port);
+		break;
 	default:
 		int loop = port - 4;
 		self->ports.loops[loop] = (float*)data;
@@ -327,13 +428,6 @@ reset(Alo* self)
 		self->phrase_start[i] = 0;
 		log("STATE: RECORDING (reset) [%d]", i);
 	}
-
-    self->clickstate = STATE_OFF;
-    uint32_t click = (uint32_t)floorf(*(self->ports.click));
-
-    if (click != 0) {
-        self->clickstate = STATE_SILENT;
-    }
 }
 
 /**
@@ -396,15 +490,15 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 	if (beat && beat->type == uris->atom_Float) {
 		// Received a beat position, synchronise
 //		const float frames_per_beat = 60.0f / self->bpm * self->rate;
-		const float bar_beat = ((LV2_Atom_Float*)beat)->body;
+		self->current_position = ((LV2_Atom_Float*)beat)->body;
 //		const float beat_beats	    = bar_beats - floorf(bar_beats);
-		if (self->current_bb != (uint32_t)bar_beat) {
+		if (self->current_bb != (uint32_t)self->current_position) {
 			// we are onto the next beat
-			self->current_bb = (uint32_t)bar_beat;
+			self->current_bb = (uint32_t)self->current_position;
 			if (self->current_lb == self->loop_beats) {
 				self->current_lb = 0;
 			}
-			log("Beat:[%d][%d] index[%d] beat[%G]", self->current_bb, self->current_lb, self->loop_index, bar_beat);
+			log("Beat:[%d][%d] index[%d] beat[%G]\n", self->current_bb, self->current_lb, self->loop_index, self->current_position);
 			self->current_lb += 1;
 		}
 	}
@@ -450,49 +544,37 @@ static void
 click(Alo* self, uint32_t begin, uint32_t end)
 {
 	float* const   output          = self->ports.output;
-	const uint32_t frames_per_beat = 60.0f / self->bpm * self->rate;
 
-	if (self->speed == 0.0f) {
-		memset(output, 0, (end - begin) * sizeof(float));
-		return;
-	}
-
-	for (uint32_t i = begin; i < end; ++i) {
-		switch (self->clickstate) {
-		case STATE_ATTACK:
-			// Amplitude increases from 0..1 until attack_len
-			output[i] = self->wave[self->wave_offset] *
-				self->elapsed_len / (float)self->attack_len;
-			if (self->elapsed_len >= self->attack_len) {
-				self->clickstate = STATE_DECAY;
-			}
-			break;
-		case STATE_DECAY:
-			// Amplitude decreases from 1..0 until attack_len + decay_len
-			output[i] = 0.0f;
-			output[i] = self->wave[self->wave_offset] *
-				(1 - ((self->elapsed_len - self->attack_len) /
-				      (float)self->decay_len));
-			if (self->elapsed_len >= self->attack_len + self->decay_len) {
-				self->clickstate = STATE_SILENT;
-			}
-			break;
-		case STATE_SILENT:
-		case STATE_OFF:
-			output[i] = 0.0f;
+	for (uint32_t idx = begin; idx < end; idx++) {
+		if (self->high_beat_offset < self->beat_len) {
+			output[idx] += self->high_beat[self->high_beat_offset];
+			self->high_beat_offset++;
 		}
 
-		// We continuously play the sine wave regardless of envelope
-		self->wave_offset = (self->wave_offset + 1) % self->wave_len;
-
-		// Update elapsed time and start attack if necessary
-		if (++self->elapsed_len == frames_per_beat) {
-			self->clickstate       = STATE_ATTACK;
-			self->elapsed_len = 0;
+		if (self->low_beat_offset < self->beat_len) {
+			output[idx] += self->low_beat[self->low_beat_offset];
+			self->low_beat_offset++;
 		}
 	}
 }
 
+static void
+update_level(Alo* self, uint32_t n_samples)
+{
+	const float* const input  = self->ports.input;
+	float* const level_output  = self->ports.level;
+
+	float output = level_min;
+	for (unsigned i = 0; i < n_samples; ++i) {
+		output = one_pole_lowpass(&self->level_filter, input[i] * input[i]);
+	}
+
+	float output_db = pow2db(output);
+	output_db = fmax(LEVEL_MIN, output_db);
+	output_db = fmin(LEVEL_MAX, output_db);
+
+	*level_output = output_db;
+}
 
 /**
    The `run()` method is the main process function of the plugin.  It processes
@@ -508,9 +590,8 @@ run(LV2_Handle instance, uint32_t n_samples)
 	float sample = 0.0;
 	float* const output = self->ports.output;
 	float* const recording = self->recording;
-	self->threshold = dbToFloat(*self->ports.threshold);
 
-	uint32_t last_t = 0;
+	update_level(self, n_samples);
 
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
 		// recording always happens
@@ -518,7 +599,7 @@ run(LV2_Handle instance, uint32_t n_samples)
 		output[pos] = 0;
 //		log("Sample: %.9f", sample);
 		recording[self->loop_index] = sample;
-		for (int i = 0; i < NUM_LOOPS; i++) {
+		for (uint32_t i = 0; i < NUM_LOOPS; i++) {
 
 			if (self->phrase_start[i] && self->phrase_start[i] == self->loop_index) {
 				if (self->button_state[i]) {
@@ -552,7 +633,7 @@ run(LV2_Handle instance, uint32_t n_samples)
 			if (self->state[i] == STATE_RECORDING && self->button_state[i]) {
 				loop[self->loop_index] = sample;
 				if (self->phrase_start[i] == 0 && self->speed != 0) {
-					if (fabs(sample) > self->threshold) {
+					if (*self->ports.level > *self->ports.threshold) {
 						self->phrase_start[i] = self->loop_index;
 						log("[%d]>>> DETECTED PHRASE START [%d]<<<", i, self->loop_index);
 					}
@@ -576,15 +657,6 @@ run(LV2_Handle instance, uint32_t n_samples)
 
 		ev = lv2_atom_sequence_next(ev)) {
 
-    	// Play the click for the time slice from last_t until now
-		if (self->clickstate != STATE_OFF) {
-			if (self->clickstate != STATE_SILENT) {
-				click(self, last_t, ev->time.frames);
-		}
-		    // Update time for next iteration and move to next event
-		    last_t = ev->time.frames;
-        }
-
 		if (ev->body.type == self->uris.midi_MidiEvent) {
 			const uint8_t* const msg = (const uint8_t*)(ev + 1);
 			int i = msg[1] - (uint32_t)floorf(*(self->ports.midi_base));
@@ -600,10 +672,30 @@ run(LV2_Handle instance, uint32_t n_samples)
 		}
 	}
 
-	if (self->clickstate != STATE_OFF) {
-        // Play for remainder of cycle
-	    click(self, last_t, n_samples);
-    }
+	const float previous_beat = floorf(self->current_position);
+	self->current_position += n_samples / self->rate / 60.0f * self->bpm;
+	self->current_position = fmodf(self->current_position, self->bpb);
+	const float new_beat = floorf(self->current_position);
+
+	if (*self->ports.click && self->speed) {
+		if (new_beat != previous_beat) {
+			const uint32_t sample_offset =
+				(uint32_t)((self->current_position - new_beat) * self->rate);
+
+			click(self, 0, sample_offset);
+
+			if (new_beat == 0.0f) {
+				self->high_beat_offset = 0;
+			} else {
+				self->low_beat_offset = 0;
+			}
+
+			click(self, sample_offset, n_samples);
+		}
+		else {
+			click(self, 0, n_samples);
+		}
+	}
 
 	if (self->midi_control == false) {
 		for (int i = 0; i < NUM_LOOPS; i++) {
@@ -669,6 +761,8 @@ cleanup(LV2_Handle instance)
 	for (int i = 0; i < NUM_LOOPS; i++) {
 		free(self->loops[i]);
 	}
+	free(self->low_beat);
+	free(self->high_beat);
 	free(self->recording);
 	free(self);
 }

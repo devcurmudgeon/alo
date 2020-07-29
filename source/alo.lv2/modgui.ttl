@@ -8,6 +8,7 @@
     modgui:stylesheet <modgui/stylesheet-alo.css> ;
     modgui:screenshot <modgui/screenshot-alo.png> ;
     modgui:thumbnail <modgui/thumbnail-alo.png> ;
+    modgui:javascript <modgui/script-alo.js> ;
     modgui:brand "devcurmudgeon" ;
     modgui:label "ALO" ;
     modgui:model "combo-model-001" ;
@@ -48,5 +49,8 @@
         lv2:index 8 ;
         lv2:symbol "bars" ;
         lv2:name "Bars" ;
+    ] ;
+    modgui:monitoredOutputs [
+        lv2:symbol "level" ;
     ] ;
 ] .
