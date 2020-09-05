@@ -50,10 +50,10 @@ typedef struct {
 } AloURIs;
 
 typedef enum {
-	ALO_INPUT = 0,
-	ALO_OUTPUT = 1,
-	ALO_BARS = 2,
-	ALO_CONTROL = 3,
+	ALO_INPUT_L = 0,
+	ALO_INPUT_R = 1,
+	ALO_OUTPUT_L = 2,
+	ALO_OUTPUT_R = 3,
 	ALO_LOOP1 = 4,
 	ALO_LOOP2 = 5,
 	ALO_LOOP3 = 6,
@@ -65,6 +65,8 @@ typedef enum {
 	ALO_MIDI_BASE = 12,
 	ALO_PER_BEAT_LOOPS = 13,
 	ALO_CLICK = 14,
+	ALO_BARS = 15,
+	ALO_CONTROL = 16,
 } PortIndex;
 
 typedef enum {
@@ -81,7 +83,7 @@ typedef enum {
     STATE_SILENT  // Silent
 } ClickState;
 
-static const size_t STORAGE_MEMORY = 2880000;
+static const size_t LOOP_SIZE = 2880000;
 static const int NUM_LOOPS = 6;
 static const bool LOG_ENABLED = false;
 
@@ -134,15 +136,17 @@ typedef struct {
 
 	// Port buffers
 	struct {
-		const float* input;
+		const float* input_l;
+		const float* input_r;
+		float* output_l;
+		float* output_r;
 		float* loops[NUM_LOOPS];
 		float* bars;
-		LV2_Atom_Sequence* control;
 		float* threshold;
-		float* output;
 		float* midi_base;	// start note for midi control of loops
 		float* pb_loops;		// number of loops in  per-beat mode
 		float* click;		// click mode on/off
+		LV2_Atom_Sequence* control;
 		LV2_Atom_Sequence* midiin;	// midi input
 	} ports;
 
@@ -219,6 +223,8 @@ instantiate(const LV2_Descriptor*     descriptor,
 	    const char*		      bundle_path,
 	    const LV2_Feature* const* features)
 {
+	log("Instantiate");
+
 	Alo* self = (Alo*)calloc(1, sizeof(Alo));
 	self->rate = rate;
 	self->bpb = DEFAULT_BEATS_PER_BAR;
@@ -232,10 +238,10 @@ instantiate(const LV2_Descriptor*     descriptor,
 	
 	self->midi_control = false;
 
-	self->recording = (float *)calloc(STORAGE_MEMORY, sizeof(float));
+	self->recording = (float *)calloc(LOOP_SIZE * 2, sizeof(float));
 
 	for (int i = 0; i < NUM_LOOPS; i++) {
-		self->loops[i] = (float *)calloc(STORAGE_MEMORY, sizeof(float));
+		self->loops[i] = (float *)calloc(LOOP_SIZE * 2, sizeof(float));
 		self->phrase_start[i] = 0;
 		self->state[i] = STATE_RECORDING;
 	}
@@ -279,6 +285,7 @@ instantiate(const LV2_Descriptor*     descriptor,
 	self->high_beat_offset = self->beat_len;
 	self->low_beat_offset = self->beat_len;
 
+	log("Instantiate end");
 	return (LV2_Handle)self;
 }
 
@@ -295,15 +302,24 @@ connect_port(LV2_Handle instance,
 	     uint32_t	port,
 	     void*	data)
 {
+	log("Connect");
 	Alo* self = (Alo*)instance;
 
 	switch ((PortIndex)port) {
-	case ALO_INPUT:
-		self->ports.input = (const float*)data;
+	case ALO_INPUT_L:
+		self->ports.input_l = (const float*)data;
 		log("Connect ALO_INPUT %d", port);
 		break;
-	case ALO_OUTPUT:
-		self->ports.output = (float*)data;
+	case ALO_OUTPUT_L:
+		self->ports.output_l = (float*)data;
+		log("Connect ALO_OUTPUT %d", port);
+		break;
+	case ALO_INPUT_R:
+		self->ports.input_r = (const float*)data;
+		log("Connect ALO_INPUT %d", port);
+		break;
+	case ALO_OUTPUT_R:
+		self->ports.output_r = (float*)data;
 		log("Connect ALO_OUTPUT %d", port);
 		break;
 	case ALO_BARS:
@@ -338,17 +354,19 @@ connect_port(LV2_Handle instance,
 		int loop = port - 4;
 		self->ports.loops[loop] = (float*)data;
 		log("Connect ALO_LOOP %d", loop);
-	}
+	}    
+	log("Connect end");
 }
 
 static void
 reset(Alo* self)
 {
+	log("Reset");
 	self->pb_loops = (uint32_t)floorf(*(self->ports.pb_loops));
 	self->loop_beats = (uint32_t)floorf(self->bpb) * (uint32_t)floorf(*(self->ports.bars));
 	self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
-	if (self->loop_samples > STORAGE_MEMORY) {
-		self->loop_samples = STORAGE_MEMORY;
+	if (self->loop_samples > LOOP_SIZE) {
+		self->loop_samples = LOOP_SIZE;
 	}
 	self->loop_index = 0;
 	log("Loop beats: %d", self->loop_beats);
@@ -360,6 +378,7 @@ reset(Alo* self)
 		self->phrase_start[i] = 0;
 		log("STATE: RECORDING (reset) [%d]", i);
 	}
+	log("Reset end");
 }
 
 /**
@@ -384,6 +403,7 @@ activate(LV2_Handle instance)
 static void
 update_position(Alo* self, const LV2_Atom_Object* obj)
 {
+	log("Update position");
 	AloURIs* const uris = &self->uris;
 
 	// Received new transport position/speed
@@ -434,6 +454,7 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 			self->current_lb += 1;
 		}
 	}
+	log("Update position end");
 }
 
 /**
@@ -442,6 +463,8 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 static void
 button_logic(LV2_Handle instance, bool new_button_state, int i)
 {
+	log("Button logic");
+
 	Alo* self = (Alo*)instance;
 
 	struct timeval te;
@@ -465,6 +488,7 @@ button_logic(LV2_Handle instance, bool new_button_state, int i)
 		self->phrase_start[i] = 0;
 		log("STATE: RECORDING (button reset) [%d]", i);
 	}
+	log("Button logic end");
 }
 
 /**
@@ -475,19 +499,24 @@ button_logic(LV2_Handle instance, bool new_button_state, int i)
 static void
 click(Alo* self, uint32_t begin, uint32_t end)
 {
-	float* const   output          = self->ports.output;
+	log("Click");
+	float* const output_l = self->ports.output_l;
+	float* const output_r = self->ports.output_r;
 
 	for (uint32_t idx = begin; idx < end; idx++) {
 		if (self->high_beat_offset < self->beat_len) {
-			output[idx] += self->high_beat[self->high_beat_offset];
+			output_l[idx] += self->high_beat[self->high_beat_offset];
+			output_r[idx] += self->high_beat[self->high_beat_offset];
 			self->high_beat_offset++;
 		}
 
 		if (self->low_beat_offset < self->beat_len) {
-			output[idx] += self->low_beat[self->low_beat_offset];
+			output_l[idx] += self->low_beat[self->low_beat_offset];
+			output_r[idx] += self->low_beat[self->low_beat_offset];
 			self->low_beat_offset++;
 		}
 	}
+	log("Click end");
 }
 
 
@@ -501,19 +530,24 @@ static void
 run(LV2_Handle instance, uint32_t n_samples)
 {
 	Alo* self = (Alo*)instance;
-	const float* const input  = self->ports.input;
-	float sample = 0.0;
-	float* const output = self->ports.output;
+	const float* const input_l  = self->ports.input_l;
+	const float* const input_r  = self->ports.input_r;
+	float* const output_l = self->ports.output_l;
+	float* const output_r = self->ports.output_r;
+	float sample_l = 0.0;
+	float sample_r = 0.0;
 	float* const recording = self->recording;
 	bool play_click = true;
 	self->threshold = dbToFloat(*self->ports.threshold);
 
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
 		// recording always happens
-		sample = input[pos];
-		output[pos] = 0;
-//		log("Sample: %.9f", sample);
-		recording[self->loop_index] = sample;
+		sample_l = input_l[pos];
+		sample_r = input_r[pos];
+		output_l[pos] = 0;
+		output_r[pos] = 0;
+		recording[self->loop_index] = sample_l;
+		recording[self->loop_index + LOOP_SIZE] = sample_r;
 		for (uint32_t i = 0; i < NUM_LOOPS; i++) {
 
 			if (self->phrase_start[i] && self->phrase_start[i] == self->loop_index) {
@@ -545,9 +579,10 @@ run(LV2_Handle instance, uint32_t n_samples)
 
 			float* const loop = self->loops[i];
 			if (self->state[i] == STATE_RECORDING && self->button_state[i]) {
-				loop[self->loop_index] = sample;
+				loop[self->loop_index] = sample_l;
+				loop[self->loop_index + LOOP_SIZE] = sample_r;
 				if (self->phrase_start[i] == 0 && self->speed != 0) {
-					if (fabs(sample) > self->threshold) {
+					if (fabs(sample_l) > self->threshold || fabs(sample_r) > self->threshold) {
 						self->phrase_start[i] = self->loop_index;
 						log("[%d]>>> DETECTED PHRASE START [%d]<<<", i, self->loop_index);
 					}
@@ -555,7 +590,8 @@ run(LV2_Handle instance, uint32_t n_samples)
 			}
 
 			if (self->state[i] == STATE_LOOP_ON && self->speed != 0) {
-				output[pos] += loop[self->loop_index];
+				output_l[pos] += loop[self->loop_index];
+				output_r[pos] += loop[self->loop_index + LOOP_SIZE];
 			}
 		}
 		self->loop_index += 1;
@@ -677,6 +713,8 @@ deactivate(LV2_Handle instance)
 static void
 cleanup(LV2_Handle instance)
 {
+	log("Cleanup");
+
 	Alo* self = (Alo*)instance;
 
 	for (int i = 0; i < NUM_LOOPS; i++) {

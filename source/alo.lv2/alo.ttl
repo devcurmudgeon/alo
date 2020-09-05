@@ -47,32 +47,26 @@ lv2:port
 [
 	a lv2:AudioPort, lv2:InputPort;
 	lv2:index 0;
-	lv2:symbol "in";
-	lv2:name "In"
+	lv2:symbol "in_left";
+	lv2:name "In_left"
+],
+[
+	a lv2:AudioPort, lv2:InputPort;
+	lv2:index 1;
+	lv2:symbol "in_right";
+	lv2:name "In_right"
 ],
 [
     a lv2:AudioPort, lv2:OutputPort;
-    lv2:index 1;
-    lv2:symbol "out";
-    lv2:name "Out"
+    lv2:index 2;
+    lv2:symbol "out_left";
+    lv2:name "Out_left"
 ],
 [
-	a lv2:ControlPort, lv2:InputPort;
-	lv2:index 2;
-	lv2:symbol "bars";
-	lv2:name "Bars";
-	lv2:default 2;
-	lv2:minimum 1;
-	lv2:maximum 32;
-	lv2:portProperty lv2:integer;
-],
-[
-	a lv2:InputPort, atom:AtomPort ;
-	atom:bufferType atom:Sequence ;
-	atom:supports time:Position ;
-	lv2:index 3 ;
-	lv2:symbol "control" ;
-	lv2:name "Control" ;
+    a lv2:AudioPort, lv2:OutputPort;
+    lv2:index 3;
+    lv2:symbol "out_right";
+    lv2:name "Out_right"
 ],
 [
 	a lv2:ControlPort, lv2:InputPort;
@@ -181,4 +175,23 @@ lv2:port
 	lv2:minimum 0;
 	lv2:maximum 1;
 	lv2:portProperty lv2:integer, lv2:toggled;
+],
+[
+	a lv2:ControlPort, lv2:InputPort;
+	lv2:index 15;
+	lv2:symbol "bars";
+	lv2:name "Bars";
+	lv2:default 2;
+	lv2:minimum 1;
+	lv2:maximum 32;
+	lv2:portProperty lv2:integer;
+],
+[
+	a lv2:InputPort, atom:AtomPort ;
+	atom:bufferType atom:Sequence ;
+	atom:supports time:Position ;
+	lv2:index 16;
+	lv2:symbol "control" ;
+	lv2:name "Control" ;
 ].
+

@@ -1,13 +1,13 @@
 /* SKINS */
 .alo{{{cns}}} {
-    border-radius: 30px;
+    border-radius: 10px;
 }
 
 .alo-0600{{{cns}}} {
     background-image: url(/resources/background.png{{{ns}}});
     background-position: center center;
     background-repeat: no-repeat;
-    height: 200px;
+    height: 205px;
     position: relative;
     width: 560px;
 }
@@ -62,7 +62,7 @@
 
 .alo{{{cns}}} .mod-pedal-input,
 .alo{{{cns}}} .mod-pedal-output {
-    top: 30px;
+    top: 4px;
 }
 
 /* SWITCH ON/OFF GENERAL */
