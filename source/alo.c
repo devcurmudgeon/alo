@@ -145,7 +145,7 @@ typedef struct {
 		float* threshold;
 		float* midi_base;	// start note for midi control of loops
 		float* pb_loops;		// number of loops in  per-beat mode
-		float* click;		// click mode on/off
+		float* click;		// click volume
 		LV2_Atom_Sequence* control;
 		LV2_Atom_Sequence* midiin;	// midi input
 	} ports;
@@ -499,24 +499,24 @@ button_logic(LV2_Handle instance, bool new_button_state, int i)
 static void
 click(Alo* self, uint32_t begin, uint32_t end)
 {
-	log("Click");
 	float* const output_l = self->ports.output_l;
 	float* const output_r = self->ports.output_r;
 
+	float amplitude = (uint32_t)floorf(*(self->ports.click));
+
 	for (uint32_t idx = begin; idx < end; idx++) {
 		if (self->high_beat_offset < self->beat_len) {
-			output_l[idx] += self->high_beat[self->high_beat_offset];
-			output_r[idx] += self->high_beat[self->high_beat_offset];
+			output_l[idx] += 0.1 * amplitude * self->high_beat[self->high_beat_offset];
+			output_r[idx] += 0.1 * amplitude * self->high_beat[self->high_beat_offset];
 			self->high_beat_offset++;
 		}
 
 		if (self->low_beat_offset < self->beat_len) {
-			output_l[idx] += self->low_beat[self->low_beat_offset];
-			output_r[idx] += self->low_beat[self->low_beat_offset];
+			output_l[idx] += 0.1 * amplitude * self->low_beat[self->low_beat_offset];
+			output_r[idx] += 0.1 * amplitude * self->low_beat[self->low_beat_offset];
 			self->low_beat_offset++;
 		}
 	}
-	log("Click end");
 }
 
 
