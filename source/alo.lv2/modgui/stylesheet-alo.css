@@ -133,7 +133,6 @@
     height:50px;
     margin-top: 10px;
     position:relative;
-    width: 58px;
 }
 .alo{{{cns}}} .mod-control-group .mod-knob .mod-knob-image-wrapper {
     padding: 1px;
@@ -142,11 +141,11 @@
     background-image: url(/resources/knob.png{{{ns}}});
     background-position: left center;
     background-repeat: no-repeat;
-    background-size: auto 50px;
-    height: 50px;
+    background-size: auto 44px;
+    height: 44px;
     position: relative;
     overflow: hidden;
-    width: 50px;
+    width: 44px;
 }
 .alo{{{cns}}} .mod-control-group .mod-knob .mod-knob-value {
     border-radius: 0 0 8px 8px;

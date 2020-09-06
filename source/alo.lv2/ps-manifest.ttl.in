@@ -37,16 +37,20 @@
             lv2:symbol "loop6" ;
             lv2:name "Loop6" ;
         ] , [
-            lv2:index 6 ;
-            lv2:symbol "midi_base" ;
-            lv2:name "MIDI Base" ;
-        ] , [
+            lv2:index 8 ;
+            lv2:symbol "bars" ;
+            lv2:name "Bars" ;
+         ] , [
             lv2:index 7 ;
             lv2:symbol "threshold" ;
             lv2:name "Threshold" ;
         ] , [
-            lv2:index 8 ;
-            lv2:symbol "bars" ;
-            lv2:name "Bars" ;
+            lv2:index 6 ;
+            lv2:symbol "midi_base" ;
+            lv2:name "MIDI Base" ;
+       ] , [
+            lv2:index 9 ;
+            lv2:symbol "click" ;
+            lv2:name "Click" ;
         ] ;
     ] .
