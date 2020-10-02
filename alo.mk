@@ -5,7 +5,7 @@
 ######################################
 
 ALO_BUNDLES = alo.lv2
-ALO_VERSION = 0.5
+ALO_VERSION = 0.6
 #ALO_SITE = $(call github,devcurmudgeon,alo,$(ALO_VERSION))
 # or for local development ...
 ALO_SITE_METHOD = local

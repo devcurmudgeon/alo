@@ -592,6 +592,10 @@ run(LV2_Handle instance, uint32_t n_samples)
 			if (self->state[i] == STATE_LOOP_ON && self->speed != 0) {
 				output_l[pos] += loop[self->loop_index];
 				output_r[pos] += loop[self->loop_index + LOOP_SIZE];
+				if (i == 5) {
+					loop[self->loop_index] = sample_l;
+					loop[self->loop_index + LOOP_SIZE] = sample_r;
+				}
 			}
 		}
 		self->loop_index += 1;

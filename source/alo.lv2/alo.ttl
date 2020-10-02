@@ -17,7 +17,7 @@ doap:license <http://opensource.org/licenses/isc>;
 
 
 lv2:minorVersion 0;
-lv2:microVersion 1;
+lv2:microVersion 6;
 
 rdfs:comment """
 
@@ -40,7 +40,9 @@ Optionally connect a midi device and control the loops by sending MIDI note on/o
 NEW:
 - PER-BEAT LOOPS setting changes the behaviour so some or all of the loops
   can be stopped and resumed on the next beat
-
+- CLICK setting provides a click when no loop is playing
+- ALO is now stereo
+- Loop6 is set to permanent overdub mode
 """;
 
 lv2:port

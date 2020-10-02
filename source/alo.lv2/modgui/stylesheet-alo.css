@@ -112,6 +112,18 @@
     z-index: 2;
 }
 
+.alo{{{cns}}} .mod-green-light .mod-black-light-image {
+    background-image: url(/resources/blacklight.png{{{ns}}});
+    background-position: left 0px;
+    background-repeat: no-repeat;
+    background-size: auto 71px;
+    height: 71px;
+    margin-top: 3px;
+    position: relative;
+    width: 71px;
+    z-index: 2;
+}
+
 .alo{{{cns}}} .mod-green-light .mod-green-light-title {
     font-family: "Helvetica Neue",Helvetica,Arial,sans-serif;
     font-size: 10px;
