@@ -519,17 +519,104 @@ click(Alo* self, uint32_t begin, uint32_t end)
 	}
 }
 
-
-/**
-   The `run()` method is the main process function of the plugin.  It processes
-   a block of audio in the audio context.  Since this plugin is
-   `lv2:hardRTCapable`, `run()` must be real-time safe, so blocking (e.g. with
-   a mutex) or memory allocation are not allowed.
-*/
 static void
-run(LV2_Handle instance, uint32_t n_samples)
+run_clicks(Alo* self, uint32_t n_samples)
 {
-	Alo* self = (Alo*)instance;
+	bool play_click = true;
+
+	const float old_beat = floorf(self->current_position);
+	self->current_position += n_samples / self->rate / 60.0f * self->bpm;
+	const float new_beat = floorf(self->current_position);
+	self->current_position = fmodf(self->current_position, self->bpb);
+	const float beat = floorf(self->current_position);
+
+	for (uint32_t i = 0; i < NUM_LOOPS; i++) {
+		if (self->state[i] == STATE_LOOP_ON) {
+			play_click = false;
+		}
+	}
+
+	if (play_click && *self->ports.click && self->speed) {
+		if (new_beat != old_beat) {
+			const uint32_t sample_offset =
+				(uint32_t)((self->current_position - beat) * self->rate);
+
+			click(self, 0, sample_offset);
+
+			if (beat == 0.0f) {
+				self->high_beat_offset = 0;
+			} else {
+				self->low_beat_offset = 0;
+			}
+
+			click(self, sample_offset, n_samples);
+		}
+		else {
+			click(self, 0, n_samples);
+		}
+	}
+}
+
+static void
+run_midi(Alo* self)
+{
+	const LV2_Atom_Sequence* midiin = self->ports.midiin;
+
+	for (const LV2_Atom_Event* ev = lv2_atom_sequence_begin(&midiin->body);
+		!lv2_atom_sequence_is_end(&midiin->body, midiin->atom.size, ev);
+
+		ev = lv2_atom_sequence_next(ev)) {
+
+		if (ev->body.type == self->uris.midi_MidiEvent) {
+			const uint8_t* const msg = (const uint8_t*)(ev + 1);
+			int i = msg[1] - (uint32_t)floorf(*(self->ports.midi_base));
+			if (i >= 0 && i < NUM_LOOPS) {
+				if (lv2_midi_message_type(msg) == LV2_MIDI_MSG_NOTE_ON) {
+					button_logic(self, true, i);
+				}
+				if (lv2_midi_message_type(msg) == LV2_MIDI_MSG_NOTE_OFF) {
+					button_logic(self, false, i);
+				}
+				self->midi_control = true;
+			}
+		}
+	}
+
+	if (self->midi_control == false) {
+		for (int i = 0; i < NUM_LOOPS; i++) {
+			bool new_button_state = (*self->ports.loops[i]) > 0.0f ? true : false;
+			if (new_button_state != self->button_state[i]) {
+				button_logic(self, new_button_state, i);
+			}
+		}
+	}
+
+	const AloURIs* uris = &self->uris;
+
+	// from metro.c
+	// Work forwards in time frame by frame, handling events as we go
+	const LV2_Atom_Sequence* in = self->ports.control;
+
+	for (const LV2_Atom_Event* ev = lv2_atom_sequence_begin(&in->body);
+	    !lv2_atom_sequence_is_end(&in->body, in->atom.size, ev);
+
+	    ev = lv2_atom_sequence_next(ev)) {
+
+		// Check if this event is an Object
+		// (or deprecated Blank to tolerate old hosts)
+		if (ev->body.type == uris->atom_Object || ev->body.type == uris->atom_Blank) {
+			const LV2_Atom_Object* obj = (const LV2_Atom_Object*)&ev->body;
+			if (obj->body.otype == uris->time_Position) {
+				// Received position information, update
+				update_position(self, obj);
+			}
+		}
+	}
+}
+
+static void
+run_loops(Alo* self, uint32_t n_samples)
+{
 	const float* const input_l  = self->ports.input_l;
 	const float* const input_r  = self->ports.input_r;
 	float* const output_l = self->ports.output_l;
@@ -537,7 +624,6 @@ run(LV2_Handle instance, uint32_t n_samples)
 	float sample_l = 0.0;
 	float sample_r = 0.0;
 	float* const recording = self->recording;
-	bool play_click = true;
 	self->threshold = dbToFloat(*self->ports.threshold);
 
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
@@ -603,91 +689,22 @@ run(LV2_Handle instance, uint32_t n_samples)
 			self->loop_index = 0;
 		}
 	}
+}
 
-	const LV2_Atom_Sequence* midiin = self->ports.midiin;
+/**
+   The `run()` method is the main process function of the plugin.  It processes
+   a block of audio in the audio context.  Since this plugin is
+   `lv2:hardRTCapable`, `run()` must be real-time safe, so blocking (e.g. with
+   a mutex) or memory allocation are not allowed.
+*/
+static void
+run(LV2_Handle instance, uint32_t n_samples)
+{
+	Alo* self = (Alo*)instance;
 
-	for (const LV2_Atom_Event* ev = lv2_atom_sequence_begin(&midiin->body);
-		!lv2_atom_sequence_is_end(&midiin->body, midiin->atom.size, ev);
-
-		ev = lv2_atom_sequence_next(ev)) {
-
-		if (ev->body.type == self->uris.midi_MidiEvent) {
-			const uint8_t* const msg = (const uint8_t*)(ev + 1);
-			int i = msg[1] - (uint32_t)floorf(*(self->ports.midi_base));
-			if (i >= 0 && i < NUM_LOOPS) {
-				if (lv2_midi_message_type(msg) == LV2_MIDI_MSG_NOTE_ON) {
-					button_logic(self, true, i);
-				}
-				if (lv2_midi_message_type(msg) == LV2_MIDI_MSG_NOTE_OFF) {
-					button_logic(self, false, i);
-				}
-				self->midi_control = true;
-			}
-		}
-	}
-
-	const float old_beat = floorf(self->current_position);
-	self->current_position += n_samples / self->rate / 60.0f * self->bpm;
-	const float new_beat = floorf(self->current_position);
-	self->current_position = fmodf(self->current_position, self->bpb);
-	const float beat = floorf(self->current_position);
-
-	for (uint32_t i = 0; i < NUM_LOOPS; i++) {
-		if (self->state[i] == STATE_LOOP_ON) {
-			play_click = false;
-		}
-	}
-
-	if (play_click && *self->ports.click && self->speed) {
-		if (new_beat != old_beat) {
-			const uint32_t sample_offset =
-				(uint32_t)((self->current_position - beat) * self->rate);
-
-			click(self, 0, sample_offset);
-
-			if (beat == 0.0f) {
-				self->high_beat_offset = 0;
-			} else {
-				self->low_beat_offset = 0;
-			}
-
-			click(self, sample_offset, n_samples);
-		}
-		else {
-			click(self, 0, n_samples);
-		}
-	}
-
-	if (self->midi_control == false) {
-		for (int i = 0; i < NUM_LOOPS; i++) {
-			bool new_button_state = (*self->ports.loops[i]) > 0.0f ? true : false;
-			if (new_button_state != self->button_state[i]) {
-				button_logic(self, new_button_state, i);
-			}
-		}
-	}
-
-	const AloURIs* uris = &self->uris;
-
-	// from metro.c
-	// Work forwards in time frame by frame, handling events as we go
-	const LV2_Atom_Sequence* in = self->ports.control;
-
-	for (const LV2_Atom_Event* ev = lv2_atom_sequence_begin(&in->body);
-	    !lv2_atom_sequence_is_end(&in->body, in->atom.size, ev);
-
-	    ev = lv2_atom_sequence_next(ev)) {
-
-		// Check if this event is an Object
-		// (or deprecated Blank to tolerate old hosts)
-		if (ev->body.type == uris->atom_Object || ev->body.type == uris->atom_Blank) {
-			const LV2_Atom_Object* obj = (const LV2_Atom_Object*)&ev->body;
-			if (obj->body.otype == uris->time_Position) {
-				// Received position information, update
-				update_position(self, obj);
-			}
-		}
-	}
+	run_loops(self, n_samples);
+	run_clicks(self, n_samples);
+	run_midi(self);
 }
 
 /**
