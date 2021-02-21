@@ -67,6 +67,7 @@ typedef enum {
 	ALO_CLICK = 14,
 	ALO_BARS = 15,
 	ALO_CONTROL = 16,
+    ALO_MIX = 17,
 } PortIndex;
 
 typedef enum {
@@ -85,7 +86,7 @@ typedef enum {
 
 static const size_t LOOP_SIZE = 2880000;
 static const int NUM_LOOPS = 6;
-static const bool LOG_ENABLED = false;
+static const bool LOG_ENABLED = true;
 
 #define DEFAULT_BEATS_PER_BAR 4
 #define DEFAULT_NUM_BARS 4
@@ -146,6 +147,7 @@ typedef struct {
 		float* midi_base;	// start note for midi control of loops
 		float* pb_loops;		// number of loops in  per-beat mode
 		float* click;		// click volume
+		float* mix;
 		LV2_Atom_Sequence* control;
 		LV2_Atom_Sequence* midiin;	// midi input
 	} ports;
@@ -186,6 +188,8 @@ typedef struct {
 	uint32_t beat_len;
 	uint32_t high_beat_offset;
 	uint32_t low_beat_offset;
+    float inmix;
+    float loopmix;
 } Alo;
 
 void
@@ -349,6 +353,10 @@ connect_port(LV2_Handle instance,
 	case ALO_CLICK:
 		self->ports.click = (float*)data;
 		log("Connect ALO_CLICK %d %d", port);
+		break;
+	case ALO_MIX:
+		self->ports.mix = (float*)data;
+		log("Connect ALO_CLICK %d", port);
 		break;
 	default:
 		int loop = port - 4;
@@ -626,12 +634,15 @@ run_loops(Alo* self, uint32_t n_samples)
 	float* const recording = self->recording;
 	self->threshold = dbToFloat(*self->ports.threshold);
 
+	self->loopmix = fmin(1.0, *self->ports.mix / 50);
+	self->inmix = fmin(1, (100 - *self->ports.mix) / 50);
+
 	for (uint32_t pos = 0; pos < n_samples; pos++) {
 		// recording always happens
 		sample_l = input_l[pos];
 		sample_r = input_r[pos];
-		output_l[pos] = 0;
-		output_r[pos] = 0;
+		output_l[pos] = self->inmix * input_l[pos];
+		output_r[pos] = self->inmix * input_r[pos];
 		recording[self->loop_index] = sample_l;
 		recording[self->loop_index + LOOP_SIZE] = sample_r;
 		for (uint32_t i = 0; i < NUM_LOOPS; i++) {
@@ -665,8 +676,8 @@ run_loops(Alo* self, uint32_t n_samples)
 
 			float* const loop = self->loops[i];
 			if (self->state[i] == STATE_RECORDING && self->button_state[i]) {
-				loop[self->loop_index] = sample_l;
-				loop[self->loop_index + LOOP_SIZE] = sample_r;
+				loop[self->loop_index] = self->loopmix * sample_l;
+				loop[self->loop_index + LOOP_SIZE] = self->loopmix * sample_r;
 				if (self->phrase_start[i] == 0 && self->speed != 0) {
 					if (fabs(sample_l) > self->threshold || fabs(sample_r) > self->threshold) {
 						self->phrase_start[i] = self->loop_index;
