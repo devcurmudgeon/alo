@@ -626,12 +626,12 @@ run(LV2_Handle instance, uint32_t n_samples)
 		}
 	}
 
-	const float previous_beat = floorf(self->current_position);
+	const float old_beat = floorf(self->current_position);
 	self->current_position += n_samples / self->rate / 60.0f * self->bpm;
-	self->current_position = fmodf(self->current_position, self->bpb);
 	const float new_beat = floorf(self->current_position);
+	self->current_position = fmodf(self->current_position, self->bpb);
+	const float beat = floorf(self->current_position);
 
-	
 	for (uint32_t i = 0; i < NUM_LOOPS; i++) {
 		if (self->state[i] == STATE_LOOP_ON) {
 			play_click = false;
@@ -639,13 +639,13 @@ run(LV2_Handle instance, uint32_t n_samples)
 	}
 
 	if (play_click && *self->ports.click && self->speed) {
-		if (new_beat != previous_beat) {
+		if (new_beat != old_beat) {
 			const uint32_t sample_offset =
-				(uint32_t)((self->current_position - new_beat) * self->rate);
+				(uint32_t)((self->current_position - beat) * self->rate);
 
 			click(self, 0, sample_offset);
 
-			if (new_beat == 0.0f) {
+			if (beat == 0.0f) {
 				self->high_beat_offset = 0;
 			} else {
 				self->low_beat_offset = 0;
