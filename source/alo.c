@@ -72,9 +72,9 @@ typedef enum {
 
 typedef enum {
 	// NB: for all states, we are always recording in the background
-	STATE_RECORDING, // no loop is set, we are only recording
+	STATE_LOOP_OFF, // the loop is not playing
 	STATE_LOOP_ON, // the loop is playing
-	STATE_LOOP_OFF // the loop is not playing
+	STATE_RECORDING // no loop is set, we are only recording
 } State;
 
 typedef enum {
@@ -175,6 +175,7 @@ typedef struct {
 	float* loops[NUM_LOOPS]; // pointers to memory for playing loops
 	uint32_t phrase_start[NUM_LOOPS]; // index into recording/loop
 	float* recording;    // pointer to memory for recording - for all loops
+	uint32_t loop_start; // non-zero for free-running loops
 	uint32_t loop_index; // index into loop for current play point
 
 	ClickState clickstate;
@@ -249,6 +250,7 @@ instantiate(const LV2_Descriptor*     descriptor,
 		self->phrase_start[i] = 0;
 		self->state[i] = STATE_RECORDING;
 	}
+	self->loop_start = 0;
 	self->loop_index = 0;
 	self->threshold = 0.0;
 
@@ -373,10 +375,12 @@ reset(Alo* self)
 	self->pb_loops = (uint32_t)floorf(*(self->ports.pb_loops));
 	self->loop_beats = (uint32_t)floorf(self->bpb) * (uint32_t)floorf(*(self->ports.bars));
 	self->loop_samples = self->loop_beats * self->rate  * 60.0f / self->bpm;
-	if (self->loop_samples > LOOP_SIZE) {
+
+	if (self->loop_samples > LOOP_SIZE || self->speed == 0) {
 		self->loop_samples = LOOP_SIZE;
 	}
 	self->loop_index = 0;
+	self->loop_start = 0;
 	log("Loop beats: %d", self->loop_beats);
 	log("BPM: %G", self->bpm);
 	log("Loop_samples: %d", self->loop_samples);
@@ -471,32 +475,44 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 static void
 button_logic(LV2_Handle instance, bool new_button_state, int i)
 {
-	log("Button logic");
-
 	Alo* self = (Alo*)instance;
 
 	struct timeval te;
 	gettimeofday(&te, NULL); // get current time
 	long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
 
-	log("Button logic [%d]", i);
+	log("[%d] Button logic", i);
 	self->button_state[i] = new_button_state;
 
 	int difference = milliseconds - self->button_time[i];
 	self->button_time[i] = milliseconds;
 	if (new_button_state == true) {
-		log("button ON for loop [%d]", i);
+		log("[%d] Button ON", i);
 	} else {
-		log("button OFF for loop [%d]", i);
+		log("[%d] Button OFF", i);
 	}
+
+	// Free running mode: when a button is pressed,
+	// if there is a button recording, set loop size and start based on its loop
+	if (self->loop_samples == LOOP_SIZE) {
+		for (int j = 0; j < NUM_LOOPS; j++) {
+			if (self->phrase_start[j] != 0) {
+				self->loop_samples = LOOP_SIZE + self->loop_index - self->phrase_start[j];
+				self->loop_samples = self->loop_samples % LOOP_SIZE;
+				self->loop_start = self->phrase_start[j];
+			}
+		}
+	}
+
 	if (difference < 1000) {
 		// double press, user is resetting
 		// so back to recording mode
 		self->state[i] = STATE_RECORDING;
 		self->phrase_start[i] = 0;
-		log("STATE: RECORDING (button reset) [%d]", i);
+		log("[%d] STATE: RECORDING (button reset)", i);
 	}
-	log("Button logic end");
+
+	log("[%d] Button logic ends", i);
 }
 
 /**
@@ -645,6 +661,7 @@ run_loops(Alo* self, uint32_t n_samples)
 		output_r[pos] = self->inmix * input_r[pos];
 		recording[self->loop_index] = sample_l;
 		recording[self->loop_index + LOOP_SIZE] = sample_r;
+
 		for (uint32_t i = 0; i < NUM_LOOPS; i++) {
 
 			if (self->phrase_start[i] && self->phrase_start[i] == self->loop_index) {
@@ -662,6 +679,7 @@ run_loops(Alo* self, uint32_t n_samples)
 				}
 			}
 
+            // Per-beat loops mode
 			if (self->loop_index % (self->loop_samples / self->loop_beats) == 0) {
 				if (self->pb_loops > i && self->state[i] != STATE_RECORDING) {
 					if (self->button_state[i]) {
@@ -678,7 +696,7 @@ run_loops(Alo* self, uint32_t n_samples)
 			if (self->state[i] == STATE_RECORDING && self->button_state[i]) {
 				loop[self->loop_index] = self->loopmix * sample_l;
 				loop[self->loop_index + LOOP_SIZE] = self->loopmix * sample_r;
-				if (self->phrase_start[i] == 0 && self->speed != 0) {
+				if (self->phrase_start[i] == 0) {
 					if (fabs(sample_l) > self->threshold || fabs(sample_r) > self->threshold) {
 						self->phrase_start[i] = self->loop_index;
 						log("[%d]>>> DETECTED PHRASE START [%d]<<<", i, self->loop_index);
@@ -686,7 +704,7 @@ run_loops(Alo* self, uint32_t n_samples)
 				}
 			}
 
-			if (self->state[i] == STATE_LOOP_ON && self->speed != 0) {
+			if (self->state[i] == STATE_LOOP_ON) {
 				output_l[pos] += loop[self->loop_index];
 				output_r[pos] += loop[self->loop_index + LOOP_SIZE];
 				if (i == 5) {
@@ -696,8 +714,8 @@ run_loops(Alo* self, uint32_t n_samples)
 			}
 		}
 		self->loop_index += 1;
-		if (self->loop_index >= self->loop_samples) {
-			self->loop_index = 0;
+		if (self->loop_index >= self->loop_start + self->loop_samples) {
+			self->loop_index = self->loop_start;
 		}
 	}
 }
