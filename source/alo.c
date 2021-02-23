@@ -86,7 +86,7 @@ typedef enum {
 
 static const size_t LOOP_SIZE = 2880000;
 static const int NUM_LOOPS = 6;
-static const bool LOG_ENABLED = true;
+static const bool LOG_ENABLED = false;
 
 #define DEFAULT_BEATS_PER_BAR 4
 #define DEFAULT_NUM_BARS 4
