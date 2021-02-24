@@ -505,6 +505,7 @@ button_logic(LV2_Handle instance, bool new_button_state, int i)
 		}
 	}
 
+	// If all loops are off, reset
 	if (self->speed == 0) {
 		bool reset_required = true;
 		for (int j = 0; j < NUM_LOOPS; j++) {
