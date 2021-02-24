@@ -484,6 +484,7 @@ button_logic(LV2_Handle instance, bool new_button_state, int i)
 	log("[%d] Button logic", i);
 	self->button_state[i] = new_button_state;
 
+
 	int difference = milliseconds - self->button_time[i];
 	self->button_time[i] = milliseconds;
 	if (new_button_state == true) {
@@ -501,6 +502,18 @@ button_logic(LV2_Handle instance, bool new_button_state, int i)
 				self->loop_samples = self->loop_samples % LOOP_SIZE;
 				self->loop_start = self->phrase_start[j];
 			}
+		}
+	}
+
+	if (self->speed == 0) {
+		bool reset_required = true;
+		for (int j = 0; j < NUM_LOOPS; j++) {
+			if (self->button_state[j] == true) {
+				reset_required = false;
+			}
+		}
+		if (reset_required == true) {
+			reset(self);
 		}
 	}
 
