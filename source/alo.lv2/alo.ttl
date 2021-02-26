@@ -17,32 +17,39 @@ doap:license <http://opensource.org/licenses/isc>;
 
 
 lv2:minorVersion 0;
-lv2:microVersion 6;
+lv2:microVersion 8;
 
 rdfs:comment """
 
-ALO is a looper designed for live audio looping with sync.
+ALO is a looper designed for live audio looping in sync with Global BPM or free-running mode.
 
-There are six loops.
-Each loop is [BARS] bars long.
-Recording starts when input audio hits [THRESHOLD].
-
-Press any loop button to:
+There are six loops. Press any loop button to:
 
 - arm for recording
 - stop playing, when the loop finishes
 - re-start playing, in sync
 
-Wipe the loop by pressing its button twice within one second.
+Recording starts when input audio hits [THRESHOLD].
+
+Each loop is [BARS] bars long if Global BPM is running.
+
+If Global BPM is not running, loop length is set during recording, by activating a different loop button.
 
 Optionally connect a midi device and control the loops by sending MIDI note on/off messages ([MIDI Base]..[MIDI Base + 5]).
 
-NEW:
-- PER-BEAT LOOPS setting changes the behaviour so some or all of the loops
-  can be stopped and resumed on the next beat
-- CLICK setting provides a click when no loop is playing
-- ALO is now stereo
-- Loop6 is set to permanent overdub mode
+[PER-BEAT LOOPS] setting changes the behaviour so some or all of the loops can
+be stopped and resumed on the next beat (in sync mode).
+
+[CLICK] adjusts volume of click in sync mode, when no loop is playing
+
+Reset mode controls when loops are wiped:
+  - 0 wipe when ALO is turned off, bpm tempo changes, when `bars` changes
+  - 1 same as 0, and when all loops are off
+  - 2 same as 0, and when a button is double-pressed within one second
+  - 3 same as 2, but only the double-pressed loop is wiped
+
+Loop6 is set to overdub.
+
 """;
 
 lv2:port
@@ -205,5 +212,27 @@ lv2:port
 	lv2:minimum 0;
 	lv2:maximum 100;
 	lv2:portProperty lv2:integer;
+],
+[
+	a lv2:ControlPort, lv2:InputPort;
+	lv2:index 18;
+	lv2:symbol "reset_mode";
+	lv2:name "Reset Mode";
+	lv2:default 3;
+	lv2:minimum 0;
+	lv2:maximum 3;
+	lv2:portProperty lv2:integer;
+],
+[
+    a lv2:InputPort ,
+    lv2:ControlPort ;
+    lv2:index 19;
+    lv2:symbol "ENABLED" ;
+    lv2:name "ENABLED" ;
+    lv2:default 1.0 ;
+    lv2:minimum 0.0 ;
+    lv2:maximum 1.0 ;
+    lv2:designation lv2:enabled;
+    lv2:portProperty lv2:toggled;
 ].
 

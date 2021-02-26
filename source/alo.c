@@ -67,7 +67,9 @@ typedef enum {
 	ALO_CLICK = 14,
 	ALO_BARS = 15,
 	ALO_CONTROL = 16,
-    ALO_MIX = 17,
+	ALO_MIX = 17,
+	ALO_RESET_MODE = 18,
+	ALO_ENABLED = 19,
 } PortIndex;
 
 typedef enum {
@@ -148,6 +150,8 @@ typedef struct {
 		float* pb_loops;		// number of loops in  per-beat mode
 		float* click;		// click volume
 		float* mix;
+		float* reset_mode;
+		int*   enabled;
 		LV2_Atom_Sequence* control;
 		LV2_Atom_Sequence* midiin;	// midi input
 	} ports;
@@ -189,8 +193,8 @@ typedef struct {
 	uint32_t beat_len;
 	uint32_t high_beat_offset;
 	uint32_t low_beat_offset;
-    float inmix;
-    float loopmix;
+	float inmix;
+	float loopmix;
 } Alo;
 
 void
@@ -358,13 +362,21 @@ connect_port(LV2_Handle instance,
 		break;
 	case ALO_MIX:
 		self->ports.mix = (float*)data;
-		log("Connect ALO_CLICK %d", port);
+		log("Connect ALO_MIX %d", port);
+		break;
+	case ALO_RESET_MODE:
+		self->ports.reset_mode = (float*)data;
+		log("Connect ALO_RESET_MODE %d", port);
+		break;
+	case ALO_ENABLED:
+		self->ports.enabled = (int*)data;
+		log("Connect ALO_ENABLED %d", port);
 		break;
 	default:
 		int loop = port - 4;
 		self->ports.loops[loop] = (float*)data;
 		log("Connect ALO_LOOP %d", loop);
-	}    
+	}
 	log("Connect end");
 }
 
@@ -415,7 +427,6 @@ activate(LV2_Handle instance)
 static void
 update_position(Alo* self, const LV2_Atom_Object* obj)
 {
-	log("Update position");
 	AloURIs* const uris = &self->uris;
 
 	// Received new transport position/speed
@@ -434,6 +445,10 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 		}
 	}
 
+	if ((uint32_t)floorf(self->bpb) * (uint32_t)floorf(*(self->ports.bars)) != self->loop_beats){
+		reset(self);
+	}
+
 	if (bpm && bpm->type == uris->atom_Float) {
 		if (round(self->bpm) != round(((LV2_Atom_Float*)bpm)->body)) {
 			// Tempo changed, update BPM
@@ -441,6 +456,11 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 			reset(self);
 		}
 	}
+
+	if ((uint32_t)floorf(self->bpb) * (uint32_t)floorf(*(self->ports.bars)) != self->loop_beats) {
+		reset(self);
+	}
+
 	if (speed && speed->type == uris->atom_Float) {
 		if (self->speed != ((LV2_Atom_Float*)speed)->body) {
 			// Speed changed, e.g. 0 (stop) to 1 (play)
@@ -466,7 +486,6 @@ update_position(Alo* self, const LV2_Atom_Object* obj)
 			self->current_lb += 1;
 		}
 	}
-	log("Update position end");
 }
 
 /**
@@ -505,27 +524,30 @@ button_logic(LV2_Handle instance, bool new_button_state, int i)
 		}
 	}
 
-	// If all loops are off, reset
-	if (self->speed == 0) {
-		bool reset_required = true;
-		for (int j = 0; j < NUM_LOOPS; j++) {
-			if (self->button_state[j] == true) {
-				reset_required = false;
-			}
+	int on_loops = 0;
+	for (int j = 0; j < NUM_LOOPS; j++) {
+		if (self->button_state[j] == true) {
+			on_loops += 1;
 		}
-		if (reset_required == true) {
-			reset(self);
-		}
+	}
+
+	if (on_loops == 0 && *(self->ports.reset_mode) == 1.0) {
+		// reset if all loops are off
+		reset(self);
+		log("[%d] STATE: RESET mode 0", i);
 	}
 
 	if (difference < 1000) {
-		// double press, user is resetting
-		// so back to recording mode
-		self->state[i] = STATE_RECORDING;
-		self->phrase_start[i] = 0;
-		log("[%d] STATE: RECORDING (button reset)", i);
+		if (*(self->ports.reset_mode) == 2.0 || on_loops == 1) {
+			reset(self);
+			log("[%d] STATE: RESET mode 2", i);
+		}
+		if (*(self->ports.reset_mode) == 3.0) {
+			self->state[i] = STATE_RECORDING;
+			self->phrase_start[i] = 0;
+			log("[%d] STATE: RECORDING (button reset)", i);
+		}
 	}
-
 	log("[%d] Button logic ends", i);
 }
 
@@ -596,7 +618,7 @@ run_clicks(Alo* self, uint32_t n_samples)
 }
 
 static void
-run_midi(Alo* self)
+run_events(Alo* self)
 {
 	const LV2_Atom_Sequence* midiin = self->ports.midiin;
 
@@ -747,7 +769,11 @@ run(LV2_Handle instance, uint32_t n_samples)
 
 	run_loops(self, n_samples);
 	run_clicks(self, n_samples);
-	run_midi(self);
+	run_events(self);
+
+	if (! *(self->ports.enabled)) {
+		reset(self);
+	}
 }
 
 /**
