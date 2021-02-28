@@ -21,38 +21,38 @@ lv2:microVersion 8;
 
 rdfs:comment """
 
-ALO is a looper designed for live audio looping in sync with Global BPM or free-running mode.
+ALO is a multi-track looper designed for live audio looping. It works in sync mode, with Global BPM, or in free-running mode.
 
-There are six loops. Press any loop button to:
+There are six loops. Press a loop button to:
+- arm the loop for recording
+- stop playing the loop
+- resume the loop
 
-- arm for recording
-- stop playing, when the loop finishes
-- re-start playing, in sync
+[THRESHOLD] sets the input level in dB that will trigger loop recording.
 
-Recording starts when input audio hits [THRESHOLD].
-
-[BARS] sets the loop length in sync mode when Global BPM is running.
-
-When Global BPM is not running, the loop length is set during recording, by activating a different loop button.
+[BARS] sets the loop length in sync mode (when Global BPM is running). In free running mode, loop length is set at the end of recording the first loop, by activating a different loop button.
 
 [MIDI Base] optionally allows loops to be controlled from a connected MIDI device sending MIDI note on/off messages ([MIDI Base]..[MIDI Base + 5]).
 
-[INSTANT LOOPS] changes the behaviour so some or all of the loops can
-be stopped and resumed instantly.
+[INSTANT LOOPS] changes the behaviour so some or all loops will stop and resume instantly:
+- 0 sets all loops to play from start to finish
+- 3 sets loops 1,2 and 3 to play and stop when their loop buttons are pressed
+- 6 sets all loops to play and stop when loop buttons are pressed
 
 [CLICK] sets the volume of the click in sync mode, when no loop is playing.
 
-[MIX] sets the output dry/wet levels for the input and loop signals -100 for only loops, 0 for only input.
+[MIX] sets the output dry/wet levels for the input and loop signals
+- 0 for only input
+- 50 for matched input and loop levels
+- 100 for only loops
 
-Reset mode controls when loops are wiped:
-  - 0 wipe when ALO is turned off, bpm tempo changes, when `bars` changes
-  - 1 same as 0, and wipe when all loops are off
-  - 2 same as 0, and wipe when a button is double-pressed within one second
-  - 3 same as 2, but only the double-pressed loop is wiped
+[RESET MODE] controls when loops are wiped:
+- 0 wipe when ALO is turned off, bpm tempo changes, when `bars` changes
+- 1 same as 0, and wipe when all loops are off
+- 2 same as 0, and wipe when a button is double-pressed within one second
+- 3 same as 2, but only the double-pressed loop is wiped
 
-Loop6 behaves differently - it outputs the loop while adding the input signal to
-the loop for next time. So if the output is looped back to the input, it works
-as an overdub. If the loopback goes via an effect, then the effect will be applied each time the loop passes through.
+Loop6 behaves differently - it outputs the loop while replacing it with the input signal for next time. So if the output is looped back to the input, it works as an overdub. If the loopback goes via an effect, then the effect will be applied each time the loop passes through.
 
 """;
 
