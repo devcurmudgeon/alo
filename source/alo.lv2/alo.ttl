@@ -31,24 +31,28 @@ There are six loops. Press any loop button to:
 
 Recording starts when input audio hits [THRESHOLD].
 
-Each loop is [BARS] bars long if Global BPM is running.
+[BARS] sets the loop length in sync mode when Global BPM is running.
 
-If Global BPM is not running, loop length is set during recording, by activating a different loop button.
+When Global BPM is not running, the loop length is set during recording, by activating a different loop button.
 
-Optionally connect a midi device and control the loops by sending MIDI note on/off messages ([MIDI Base]..[MIDI Base + 5]).
+[MIDI Base] optionally allows loops to be controlled from a connected MIDI device sending MIDI note on/off messages ([MIDI Base]..[MIDI Base + 5]).
 
-[PER-BEAT LOOPS] setting changes the behaviour so some or all of the loops can
+[PER-BEAT LOOPS] changes the behaviour so some or all of the loops can
 be stopped and resumed on the next beat (in sync mode).
 
-[CLICK] adjusts volume of click in sync mode, when no loop is playing
+[CLICK] sets the volume of the click in sync mode, when no loop is playing.
+
+[MIX] sets the output dry/wet levels for the input and loop signals -100 for only loops, 0 for only input.
 
 Reset mode controls when loops are wiped:
   - 0 wipe when ALO is turned off, bpm tempo changes, when `bars` changes
-  - 1 same as 0, and when all loops are off
-  - 2 same as 0, and when a button is double-pressed within one second
+  - 1 same as 0, and wipe when all loops are off
+  - 2 same as 0, and wipe when a button is double-pressed within one second
   - 3 same as 2, but only the double-pressed loop is wiped
 
-Loop6 is set to overdub.
+Loop6 behaves differently - it outputs the loop while adding the input signal to
+the loop for next time. So if the output is looped back to the input, it works
+as an overdub. If the loopback goes via an effect, then the effect will be applied each time the loop passes through.
 
 """;
 
