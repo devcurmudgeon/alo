@@ -63,7 +63,7 @@ typedef enum {
 	ALO_THRESHOLD = 10,
 	ALO_MIDIIN = 11,
 	ALO_MIDI_BASE = 12,
-	ALO_PER_BEAT_LOOPS = 13,
+	ALO_INSTANT_LOOPS = 13,
 	ALO_CLICK = 14,
 	ALO_BARS = 15,
 	ALO_CONTROL = 16,
@@ -93,7 +93,7 @@ static const bool LOG_ENABLED = false;
 #define DEFAULT_BEATS_PER_BAR 4
 #define DEFAULT_NUM_BARS 4
 #define DEFAULT_BPM 120
-#define DEFAULT_PER_BEAT_LOOPS 0
+#define DEFAULT_INSTANT_LOOPS 0
 
 #define HIGH_BEAT_FREQ 880
 #define LOW_BEAT_FREQ 440
@@ -147,7 +147,7 @@ typedef struct {
 		float* bars;
 		float* threshold;
 		float* midi_base;	// start note for midi control of loops
-		float* pb_loops;		// number of loops in  per-beat mode
+		float* pb_loops;		// number of loops in instant mode
 		float* click;		// click volume
 		float* mix;
 		float* reset_mode;
@@ -168,7 +168,7 @@ typedef struct {
 	uint32_t current_lb;	// which beat of the loop we are on (1, 2, ...)
 	float current_position;
 
-	uint32_t pb_loops;	// number of loops in per-beat mode
+	uint32_t pb_loops;	// number of loops in instant mode
 
 	State state[NUM_LOOPS];	   // we're recording, playing or not playing
 
@@ -243,7 +243,7 @@ instantiate(const LV2_Descriptor*     descriptor,
 	self->current_bb = 0;
 	self->current_lb = 0;
 	self->current_position = 0.0f;
-	self->pb_loops = DEFAULT_PER_BEAT_LOOPS;
+	self->pb_loops = DEFAULT_INSTANT_LOOPS;
 	
 	self->midi_control = false;
 
@@ -352,9 +352,9 @@ connect_port(LV2_Handle instance,
 		self->ports.midi_base = (float*)data;
 		log("Connect ALO_MIDI_BASE %d %d", port);
 		break;
-	case ALO_PER_BEAT_LOOPS:
+	case ALO_INSTANT_LOOPS:
 		self->ports.pb_loops = (float*)data;
-		log("Connect ALO_PER_BEAT_LOOPS %d %d", port);
+		log("Connect ALO_INSTANT_LOOPS %d %d", port);
 		break;
 	case ALO_CLICK:
 		self->ports.click = (float*)data;
