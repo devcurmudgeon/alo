@@ -17,7 +17,7 @@ doap:license <http://opensource.org/licenses/isc>;
 
 
 lv2:minorVersion 0;
-lv2:microVersion 8;
+lv2:microVersion 9;
 
 rdfs:comment """
 
